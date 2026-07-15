@@ -32,6 +32,39 @@ TOKYO23 = ['千代田区', '中央区', '港区', '新宿区', '文京区', '台
            '品川区', '目黒区', '大田区', '世田谷区', '渋谷区', '中野区', '杉並区', '豊島区',
            '北区', '荒川区', '板橋区', '練馬区', '足立区', '葛飾区', '江戸川区']
 
+# ---------------------------------------------------------------- 住宅判定
+# 駅ページのファーストビューは区分マンション相場(住宅)なので、周辺REITも住宅に揃える。
+# (オフィス等の全用途データは reit_properties.csv に残り、REIT個別ページで使える)
+# 判定は use_type 優先、空欄時は物件名ブランド → REIT名 の順にフォールバックする。
+RESI_USE = re.compile(r'居住|住宅|レジデン|共同住宅')
+NONRESI_USE = re.compile(r'オフィス|事務所|商業|物流|ホテル|宿泊|倉庫|店舗|事業所|底地|その他')
+NONRESI_NAME = re.compile(r'Dプロジェクト|ロジ|物流|ロジスティ|DPL|プロロジス|GLP|オフィス|'
+                          r'センタービル|モール|アウトレット|ショッピング|ホテル')
+RESI_NAME = re.compile(r'レジデン|レジデンス|ハイツ|コーポ|メゾン|コンフォリア|プラウド|'
+                       r'パークアクシス|アクシス|カーサ|ヴィラ|ガーデンホームズ|'
+                       r'S-FORT|S-RESIDENCE|プロシード|アルティザ')
+RESI_REIT = re.compile(r'レジデンシャル|アコモデーション|コンフォリア|リビング|プロシード|'
+                       r'サムティ・レジデン')
+
+
+def is_residential(r):
+    use = (r.get('use_type', '') or '').strip()
+    name = r.get('property_name', '') or ''
+    reit = r.get('reit_name', '') or ''
+    if use:
+        if RESI_USE.search(use):
+            return True
+        if NONRESI_USE.search(use):
+            return False
+    # 用途空欄: 物件名ブランド → REIT名 の順で判定
+    if NONRESI_NAME.search(name):
+        return False
+    if RESI_NAME.search(name):
+        return True
+    if RESI_REIT.search(reit):
+        return True
+    return False   # 判定不能は住宅に入れない(誤混入を防ぐ)
+
 
 def extract_tokyo_muni(location, region):
     """所在地(優先)またはregionから東京の市区町村名を抽出。東京外はNoneを返す。"""
@@ -61,10 +94,16 @@ def main():
     ap.add_argument('--in', dest='infile', default='reit_properties.csv')
     ap.add_argument('--out', default='reit_by_muni.csv')
     ap.add_argument('--examples', type=int, default=5, help='事例JSONに載せる物件数')
+    ap.add_argument('--all-uses', action='store_true',
+                    help='住宅フィルタを外して全用途で集約(既定は住宅のみ)')
     args = ap.parse_args()
 
     with open(args.infile, encoding='utf-8-sig') as f:
         rows = list(csv.DictReader(f))
+
+    # 既定は住宅のみ(駅ページ用)。--all-uses で全用途。
+    if not args.all_uses:
+        rows = [r for r in rows if is_residential(r)]
 
     # 市区町村ごとに物件を集める
     by_muni = {}
