@@ -1,0 +1,459 @@
+{
+  "current": [
+    {
+      "name": "日本都市ファンド投資法人",
+      "url": "https://www.jmf-reit.com/",
+      "aum": "13390",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "日本ビルファンド投資法人",
+      "url": "https://www.nbf-m.com/",
+      "aum": "15660",
+      "use": "オフィス特化型",
+      "note": ""
+    },
+    {
+      "name": "日本プロロジスリート投資法人",
+      "url": "https://www.prologis-reit.co.jp/",
+      "aum": "9630",
+      "use": "物流施設特化型",
+      "note": ""
+    },
+    {
+      "name": "オリックス不動産投資法人",
+      "url": "https://www.orixjreit.com/",
+      "aum": "8040",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "ＫＤＸ不動産投資法人",
+      "url": "https://www.kdx-reit.com/",
+      "aum": "12190",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "インヴィンシブル投資法人",
+      "url": "https://www.invincible-inv.co.jp/",
+      "aum": "6840",
+      "use": "複合型（ホテル・住宅）",
+      "note": ""
+    },
+    {
+      "name": "野村不動産マスターファンド投資法人",
+      "url": "https://www.nre-mf.co.jp/",
+      "aum": "10980",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "大和ハウスリート投資法人",
+      "url": "https://www.daiwahouse-reit.co.jp/",
+      "aum": "9150",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "ＧＬＰ投資法人",
+      "url": "https://www.glpjreit.com/",
+      "aum": "8720",
+      "use": "物流施設特化型",
+      "note": ""
+    },
+    {
+      "name": "福岡リート投資法人",
+      "url": "https://www.fukuoka-reit.jp/",
+      "aum": "2310",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "三井不動産アコモデーションファンド投資法人",
+      "url": "https://www.naf-r.jp/",
+      "aum": "3540",
+      "use": "住宅・レジデンス特化型",
+      "note": ""
+    },
+    {
+      "name": "大和証券オフィス投資法人",
+      "url": "https://www.daiwa-office.co.jp/",
+      "aum": "4910",
+      "use": "オフィス特化型",
+      "note": ""
+    },
+    {
+      "name": "三井不動産ロジスティクスパーク投資法人",
+      "url": "https://www.mflp-r.co.jp/",
+      "aum": "5670",
+      "use": "物流施設特化型",
+      "note": ""
+    },
+    {
+      "name": "日本リート投資法人",
+      "url": "https://www.nippon-reit.com/",
+      "aum": "2750",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "投資法人みらい",
+      "url": "https://www.3476.jp/",
+      "aum": "1800",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "産業ファンド投資法人",
+      "url": "https://www.iif-reit.com/",
+      "aum": "5380",
+      "use": "物流・インフラ複合型",
+      "note": ""
+    },
+    {
+      "name": "日本プライムリアルティ投資法人",
+      "url": "https://www.jpr-reit.co.jp/",
+      "aum": "5520",
+      "use": "複合型（オフィス・商業）",
+      "note": ""
+    },
+    {
+      "name": "アドバンス・レジデンス投資法人",
+      "url": "https://www.adr-reit.com/",
+      "aum": "5040",
+      "use": "住宅・レジデンス特化型",
+      "note": ""
+    },
+    {
+      "name": "積水ハウス・リート投資法人",
+      "url": "https://www.sekisuihouse-reit.co.jp/",
+      "aum": "5610",
+      "use": "複合型（オフィス・住宅）",
+      "note": ""
+    },
+    {
+      "name": "大和証券リビング投資法人",
+      "url": "https://www.daiwa-securities-living.co.jp/",
+      "aum": "3980",
+      "use": "複合型（住宅・ヘルスケア）",
+      "note": ""
+    },
+    {
+      "name": "グローバル・ワン不動産投資法人",
+      "url": "https://www.go-reit.co.jp/",
+      "aum": "2320",
+      "use": "オフィス特化型",
+      "note": ""
+    },
+    {
+      "name": "ラサールロジポート投資法人",
+      "url": "https://lasalle-logiport.com/",
+      "aum": "3560",
+      "use": "物流施設特化型",
+      "note": ""
+    },
+    {
+      "name": "コンフォリア・レジデンシャル投資法人",
+      "url": "https://www.comforia-reit.co.jp/",
+      "aum": "3410",
+      "use": "住宅・レジデンス特化型",
+      "note": ""
+    },
+    {
+      "name": "ＮＴＴ都市開発リート投資法人",
+      "url": "https://nud-reit.co.jp/",
+      "aum": "2950",
+      "use": "複合型（オフィス・住宅）",
+      "note": ""
+    },
+    {
+      "name": "平和不動産リート投資法人",
+      "url": "https://www.heiwa-re.co.jp/",
+      "aum": "2650",
+      "use": "複合型（オフィス・住宅）",
+      "note": ""
+    },
+    {
+      "name": "星野リゾート・リート投資法人",
+      "url": "https://www.hoshinoresorts-reit.com/",
+      "aum": "2350",
+      "use": "ホテル特化型",
+      "note": ""
+    },
+    {
+      "name": "スターアジア不動産投資法人",
+      "url": "https://starasia-reit.com/",
+      "aum": "2730",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "いちごオフィスリート投資法人",
+      "url": "https://www.ichigo-office.co.jp/",
+      "aum": "2230",
+      "use": "オフィス特化型",
+      "note": ""
+    },
+    {
+      "name": "阪急阪神リート投資法人",
+      "url": "https://www.hankyuhanshinreit.co.jp/",
+      "aum": "1790",
+      "use": "複合型（商業・オフィス）",
+      "note": ""
+    },
+    {
+      "name": "ＳＯＳｉＬＡ物流リート投資法人",
+      "url": "https://sosila-reit.co.jp/",
+      "aum": "1450",
+      "use": "物流施設特化型",
+      "note": ""
+    },
+    {
+      "name": "エスコンジャパンリート投資法人",
+      "url": "https://www.escon-reit.jp/",
+      "aum": "760",
+      "use": "商業施設特化型",
+      "note": ""
+    },
+    {
+      "name": "いちごホテルリート投資法人",
+      "url": "https://www.ichigo-hotel.co.jp/",
+      "aum": "730",
+      "use": "ホテル特化型",
+      "note": ""
+    },
+    {
+      "name": "サムティ・レジデンシャル投資法人",
+      "url": "https://www.samty-residential.com/",
+      "aum": "1710",
+      "use": "住宅・レジデンス特化型",
+      "note": ""
+    },
+    {
+      "name": "サンケイリアルエステート投資法人",
+      "url": "https://www.s-reit.co.jp/",
+      "aum": "940",
+      "use": "複合型（オフィス中心）",
+      "note": ""
+    },
+    {
+      "name": "スターツプロシード投資法人",
+      "url": "https://www.sp-inv.co.jp/",
+      "aum": "1040",
+      "use": "住宅・レジデンス特化型",
+      "note": ""
+    },
+    {
+      "name": "森トラストリート投資法人",
+      "url": "https://www.mt-reit.jp/",
+      "aum": "4640",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "タカラレーベン不動産投資法人",
+      "url": "https://mirarth-reit.com/",
+      "aum": "1930",
+      "use": "総合型",
+      "note": "MIRARTH不動産投資法人"
+    },
+    {
+      "name": "ユナイテッド・アーバン投資法人",
+      "url": "https://www.united-reit.co.jp/",
+      "aum": "7300",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "東京インフラ・エネルギー投資法人",
+      "url": "https://www.tokyo-infra.com/",
+      "aum": "291",
+      "use": "インフラ（太陽光）特化型",
+      "note": ""
+    },
+    {
+      "name": "セントラル・リート投資法人",
+      "url": "https://xymaxreit.co.jp/",
+      "aum": "510",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "日本ホテル＆レジデンシャル投資法人",
+      "url": "https://nhr-reit.com/",
+      "aum": "690",
+      "use": "複合型（ホテル・住宅）",
+      "note": ""
+    },
+    {
+      "name": "ヘルスケア＆メディカル投資法人",
+      "url": "https://www.hcm3455.co.jp/",
+      "aum": "870",
+      "use": "ヘルスケア特化型",
+      "note": ""
+    },
+    {
+      "name": "三菱地所物流リート投資法人",
+      "url": "https://mel-reit.co.jp/",
+      "aum": "2800",
+      "use": "物流施設特化型",
+      "note": ""
+    },
+    {
+      "name": "Ｏｎｅリート投資法人",
+      "url": "https://one-reit.com/",
+      "aum": "1520",
+      "use": "複合型（オフィス中心）",
+      "note": ""
+    },
+    {
+      "name": "イオンリート投資法人",
+      "url": "https://www.aeon-jreit.co.jp/",
+      "aum": "4820",
+      "use": "商業施設特化型",
+      "note": ""
+    },
+    {
+      "name": "ヒューリックリート投資法人",
+      "url": "https://www.hulic-reit.co.jp/",
+      "aum": "4140",
+      "use": "総合型（オフィス・商業中心）",
+      "note": ""
+    },
+    {
+      "name": "アクティビア・プロパティーズ投資法人",
+      "url": "https://www.activia-reit.co.jp/",
+      "aum": "5430",
+      "use": "複合型（商業・オフィス）",
+      "note": ""
+    },
+    {
+      "name": "トーセイ・リート投資法人",
+      "url": "https://tosei-reit.co.jp/",
+      "aum": "840",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "マリモ地方創生リート投資法人",
+      "url": "https://www.marimo-reit.co.jp/",
+      "aum": "630",
+      "use": "総合型",
+      "note": ""
+    },
+    {
+      "name": "ジャパンリアルエステイト投資法人",
+      "url": "https://www.j-re.co.jp/",
+      "aum": "11980",
+      "use": "オフィス特化型",
+      "note": ""
+    },
+    {
+      "name": "東急リアル・エステート投資法人",
+      "url": "https://www.tokyu-reit.co.jp/",
+      "aum": "2460",
+      "use": "複合型（オフィス・商業）",
+      "note": ""
+    },
+    {
+      "name": "フロンティア不動産投資法人",
+      "url": "https://www.frontier-reit.co.jp/",
+      "aum": "3972",
+      "use": "商業施設特化型",
+      "note": "三井不動産商業ファンド投資法人"
+    },
+    {
+      "name": "ジャパン・ホテル・リート投資法人",
+      "url": "https://www.jhrth.co.jp/",
+      "aum": "6410",
+      "use": "ホテル特化型",
+      "note": ""
+    },
+    {
+      "name": "ジャパンエクセレント投資法人",
+      "url": "https://www.excellent-reit.co.jp/",
+      "aum": "2980",
+      "use": "オフィス特化型",
+      "note": ""
+    },
+    {
+      "name": "森ヒルズリート投資法人",
+      "url": "https://www.mori-hills-reit.co.jp/",
+      "aum": "4160",
+      "use": "複合型（オフィス中心）",
+      "note": ""
+    },
+    {
+      "name": "カナディアン・ソーラー・インフラ投資法人",
+      "url": "https://www.canadiansolarinfra.com/",
+      "aum": "1018",
+      "use": "インフラ（太陽光）特化型",
+      "note": ""
+    },
+    {
+      "name": "ＣＲＥロジスティクスファンド投資法人",
+      "url": "https://cre-reit.co.jp/",
+      "aum": "1600",
+      "use": "物流施設特化型",
+      "note": ""
+    },
+    {
+      "name": "エネクス・インフラ投資法人",
+      "url": "https://enexinfra.com/",
+      "aum": "1025",
+      "use": "インフラ（太陽光・風力）特化型",
+      "note": ""
+    },
+    {
+      "name": "東海道リート投資法人",
+      "url": "https://www.tokaido-reit.co.jp/",
+      "aum": "750",
+      "use": "総合型",
+      "note": ""
+    }
+  ],
+  "defunct": [
+    {
+      "name": "ケネディクス商業リート投資法人",
+      "status": "2023年10月にＫＤＸ不動産投資法人へ統合されました。",
+      "to": "ＫＤＸ不動産投資法人"
+    },
+    {
+      "name": "ケネディクス・レジデンシャル・ネクスト投資法人",
+      "status": "2023年10月にＫＤＸ不動産投資法人へ統合されました。",
+      "to": "ＫＤＸ不動産投資法人"
+    },
+    {
+      "name": "森トラスト・ホテルリート投資法人",
+      "status": "森トラストリート投資法人へ統合されました。",
+      "to": "森トラストリート投資法人"
+    },
+    {
+      "name": "アドバンス・ロジスティクス投資法人",
+      "status": "2024年11月に三井不動産ロジスティクスパーク投資法人へ吸収合併されました。",
+      "to": "三井不動産ロジスティクスパーク投資法人"
+    },
+    {
+      "name": "タカラレーベン・インフラ投資法人",
+      "status": "2023年2月に上場廃止されました。",
+      "to": ""
+    },
+    {
+      "name": "ジャパン・インフラファンド投資法人",
+      "status": "上場廃止されました。",
+      "to": ""
+    },
+    {
+      "name": "日本再生可能エネルギーインフラ投資法人",
+      "status": "2022年8月に上場廃止されました。",
+      "to": ""
+    },
+    {
+      "name": "インベスコ・オフィス・ジェイリート投資法人",
+      "status": "Starwoodによる買収で上場廃止・非公開化されました。",
+      "to": ""
+    }
+  ]
+}
