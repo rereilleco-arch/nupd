@@ -82,6 +82,23 @@ def extract_tokyo_muni(location, region):
     return None
 
 
+def extract_town(location):
+    """住所から町名(丁目の手前まで)を抽出する。次フェーズの近接並び替え用。
+    例: '東京都港区北青山二丁目13番5号' -> '北青山'
+        '東京都中央区銀座4-9-13' -> '銀座'
+    抽出できなければ空文字。"""
+    if not location:
+        return ''
+    s = str(location)
+    # 「東京都○○区」を除去
+    s = re.sub(r'^.*?[都道府県].*?[区市町村]', '', s)
+    # 丁目・数字の手前までを町名とする
+    m = re.match(r'([^\d０-９一二三四五六七八九十]+?)(?:[一二三四五六七八九十\d０-９]+丁目|[\d０-９]|$)', s)
+    if m:
+        return m.group(1).strip()
+    return s[:6].strip()
+
+
 def to_float(s):
     try:
         return float(s) if s not in (None, '') else None
@@ -124,20 +141,27 @@ def main():
         with_appraisal = [p for p in props if to_float(p.get('appraisal_value')) is not None]
         count = len(with_appraisal)
 
-        # 代表事例(鑑定評価額の大きい順に、cap rateが取れているものを優先)
+        # 事例は同区の住宅物件を「全件」持たせる(表示件数の制限はプラグイン側)。
+        # これにより、次フェーズで町名・距離ベースの並び替えを入れる際、
+        # データ側を作り直さずプラグインの表示ロジックだけで対応できる。
+        # 並びは鑑定評価額の大きい順(cap rate開示を優先)。
         def sort_key(p):
             has_cap = 1 if to_float(p.get('cap_rate')) is not None else 0
             av = to_float(p.get('appraisal_value')) or 0
             return (has_cap, av)
+        # JSONキーはプラグインの既存表示コード(eki_reit_table)が読む日本語キーに合わせる:
+        #   物件 / REIT / 取得百万 / 鑑定百万 / NOI利回り
+        # (プラグイン側の表示コードを変更せずに済む)
         examples = []
-        for p in sorted(with_appraisal, key=sort_key, reverse=True)[:args.examples]:
+        for p in sorted(with_appraisal, key=sort_key, reverse=True):
             examples.append({
-                'name': p.get('property_name', ''),
-                'reit': p.get('reit_name', ''),
-                'cap': to_float(p.get('cap_rate')),
-                'appraisal': to_float(p.get('appraisal_value')),
-                'occupancy': to_float(p.get('occupancy')),
-                'use': p.get('use_type', '') or p.get('region', ''),
+                '物件': p.get('property_name', ''),
+                'REIT': p.get('reit_name', ''),
+                '取得百万': to_float(p.get('acquisition_price')),
+                '鑑定百万': to_float(p.get('appraisal_value')),
+                'NOI利回り': to_float(p.get('cap_rate')),
+                '稼働率': to_float(p.get('occupancy')),
+                '町名': extract_town(p.get('location', '')),   # 次フェーズの近接並び替え用
             })
 
         out_rows.append({
