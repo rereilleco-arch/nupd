@@ -116,6 +116,40 @@ def name_proximity_rank(keywords, prop_name):
     return 2
 
 
+def norm_station(s):
+    """駅名正規化(自駅重複・表記揺れの同一視用)"""
+    s = re.sub(r'[\s\u3000]+', '', str(s or ''))
+    s = re.sub(r'駅$', '', s)
+    for a in ('ヶ', 'が', 'ガ', 'ケ'):
+        s = s.replace(a, 'ケ')
+    return s
+
+
+def load_neighbors(path):
+    """近隣駅CSV(station,neighbors,neighbor_dists)を読む。
+    返り値: {駅名: [(近隣駅名, 距離km), ...]} 自駅と同名(表記揺れ)は除外。"""
+    out = {}
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            for r in csv.DictReader(f):
+                st = r['station']
+                ns = (r.get('neighbors') or '').split('|')
+                ds = (r.get('neighbor_dists') or '').split('|')
+                pairs = []
+                self_key = norm_station(st)
+                for n, d in zip(ns, ds):
+                    if not n or norm_station(n) == self_key:
+                        continue   # 自駅の表記揺れ重複は除外
+                    try:
+                        pairs.append((n, float(d)))
+                    except ValueError:
+                        pairs.append((n, 999.0))
+                out[st] = pairs
+    except FileNotFoundError:
+        pass
+    return out
+
+
 def to_float(s):
     try:
         return float(s) if s not in (None, '') else None
@@ -133,8 +167,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--in', dest='infile', default='reit_properties.csv')
     ap.add_argument('--stations', default='input/tokyost_1.csv')
+    ap.add_argument('--neighbors', default='station_neighbors.csv',
+                    help='近隣駅リスト(station,neighbors,neighbor_dists)。恒久データ。')
     ap.add_argument('--out', default='reit_by_station.csv')
-    ap.add_argument('--limit', type=int, default=15, help='駅ごとの事例表示件数')
+    ap.add_argument('--limit', type=int, default=0,
+                    help='駅ごとの事例保持件数(0=全件)。表示件数はプラグイン側で絞るため既定は全件。')
     args = ap.parse_args()
 
     # 住宅REIT物件を市区町村ごとに集める
@@ -171,22 +208,59 @@ def main():
             if title and title not in stations:
                 stations[title] = addr
 
+    # 駅 -> 区 のマップ(近隣駅の区を引くのに使う)
+    station_muni = {t: extract_muni(a) for t, a in stations.items()}
+
+    # 近隣駅リスト(恒久データ)。自駅の区に物件が少ない場合、近い駅の区の物件で補完する。
+    neighbors = load_neighbors(args.neighbors)
+
     out_rows = []
     for title, addr in sorted(stations.items()):
-        muni = extract_muni(addr)
+        muni = station_muni.get(title)
         if not muni or muni not in by_muni:
             continue
         st_kws = station_keywords(title, addr)
-        plist = by_muni[muni]
 
-        # 近接順に並べる: (物件名に駅キーワードを含むか, 決定的シャッフル)
-        ranked = sorted(plist, key=lambda p: (
-            name_proximity_rank(st_kws, p['property_name']),
-            stable_shuffle_key(title, p['property_name']),
-        ))
+        # 各区に「自駅からの距離」を割り当てる。
+        #   自区 = 距離0(最も近い)
+        #   近隣駅の区 = その駅までの距離
+        # これで「物件名一致 > 自駅から近い順(自区含む)」で並べられる(解釈B)。
+        muni_dist = {muni: 0.0}
+        for nb_name, nb_dist in neighbors.get(title, []):
+            nb_muni = station_muni.get(nb_name)
+            if nb_muni and nb_muni in by_muni and nb_muni not in muni_dist:
+                muni_dist[nb_muni] = nb_dist
+
+        # 対象物件 = 自区 + 近隣駅の区。各物件にソートキーを付ける。
+        pool = []
+        for mu, mdist in muni_dist.items():
+            # その区に対して、駅名キーワードは自区なら自駅、近隣区ならその近隣駅のものを使う
+            if mu == muni:
+                kws = st_kws
+                seed = title
+            else:
+                # この区に対応する近隣駅(最も近いもの)の名前でキーワード/シードを作る
+                nb_name = next((n for n, d in neighbors.get(title, [])
+                                if station_muni.get(n) == mu), title)
+                kws = station_keywords(nb_name, stations.get(nb_name, ''))
+                seed = nb_name
+            for p in by_muni[mu]:
+                name_rank = name_proximity_rank(kws, p['property_name'])
+                pool.append((name_rank, mdist, stable_shuffle_key(seed, p['property_name']), mu, p))
+
+        # 物件名一致(rank0) > 自駅から近い区順 > 決定的シャッフル
+        pool.sort(key=lambda x: (x[0], x[1], x[2]))
+
+        # 重複物件(同一物件が複数区に出ることはないが念のため)を除去しつつ整形
         examples = []
-        for p in ranked[:args.limit]:
-            examples.append({
+        seen = set()
+        keep_pool = pool if args.limit <= 0 else pool[:args.limit]
+        for name_rank, mdist, _, mu, p in keep_pool:
+            key = (p.get('property_name', ''), p.get('reit_name', ''))
+            if key in seen:
+                continue
+            seen.add(key)
+            item = {
                 '物件': p.get('property_name', ''),
                 'REIT': p.get('reit_name', ''),
                 '取得百万': to_float(p.get('acquisition_price')),
@@ -194,7 +268,8 @@ def main():
                 'NOI利回り': p['_cap'],
                 '稼働率': to_float(p.get('occupancy')),
                 '町名': p['_town'],
-            })
+            }
+            examples.append(item)
 
         out_rows.append({
             'station': title,
