@@ -187,7 +187,12 @@ def cmd_scan(args):
         ])
         for name, recs in sorted(matches.items()):
             recs_sorted = sorted(recs, key=lambda r: r["submitDateTime"] or "", reverse=True)
-            latest = recs_sorted[0]
+            # 最新の「有価証券報告書(formCode=07B000)」を優先して選ぶ。
+            # 最新の提出書類が半期報告書や訂正報告書等でも、過去の有報を拾えるようにする。
+            # (これをしないと「最新書類がたまたま有報でない」法人が物件パース対象から漏れる)
+            yuho = [r for r in recs_sorted
+                    if str(r.get("formCode") or "").zfill(6) == "07B000"]
+            latest = yuho[0] if yuho else recs_sorted[0]
             codes = sorted(set(r["edinetCode"] for r in recs if r["edinetCode"]))
             w.writerow([
                 name, latest["status"], "/".join(codes), len(recs),
