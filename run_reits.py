@@ -48,6 +48,7 @@ def main():
     ap.add_argument('--test', action='store_true', help='用途がバラけるよう代表法人を選んで実行')
     ap.add_argument('--sleep', type=float, default=1.0)
     ap.add_argument('--out', default='reit_properties.csv')
+    ap.add_argument('--report', default='reit_parse_report.csv', help='法人別レポートの出力先')
     args = ap.parse_args()
 
     api = os.environ.get('EDINET_API_KEY')
@@ -119,14 +120,14 @@ def main():
         w.writeheader()
         w.writerows(all_rows)
 
-    with open('reit_parse_report.csv', 'w', newline='', encoding='utf-8-sig') as f:
+    with open(args.report, 'w', newline='', encoding='utf-8-sig') as f:
         cols = ['reit_name', 'doc_id', 'status', 'properties'] + CHECK_FIELDS
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
         w.writerows(report)
 
     print(f"\n完了: {len(all_rows)}物件 -> {args.out}")
-    print(f"      法人別レポート -> reit_parse_report.csv")
+    print(f"      法人別レポート -> {args.report}")
     ok = sum(1 for r in report if r['status'] == 'OK')
     print(f"      成功 {ok}/{len(report)} 法人")
 
