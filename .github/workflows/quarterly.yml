@@ -32,7 +32,7 @@ jobs:
           python3 edinet_reit_recon.py scan --days 400
           python3 run_reits.py
           python3 aggregate_by_muni.py --in reit_properties.csv --out output/reit_by_muni.csv
-          python3 aggregate_by_station.py --in reit_properties.csv --stations input/tokyost_1.csv --out output/reit_by_station.csv
+          python3 aggregate_by_station.py --in reit_properties.csv --stations input/tokyost_1.csv --neighbors station_neighbors.csv --out output/reit_by_station.csv
       - name: Commit outputs
         run: |
           git config user.name  "noitas-bot"
