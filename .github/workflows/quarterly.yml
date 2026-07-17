@@ -32,10 +32,11 @@ jobs:
           python3 edinet_reit_recon.py scan --days 400
           python3 run_reits.py
           python3 aggregate_by_muni.py --in reit_properties.csv --out output/reit_by_muni.csv
+          python3 aggregate_by_station.py --in reit_properties.csv --stations input/tokyost_1.csv --out output/reit_by_station.csv
       - name: Commit outputs
         run: |
           git config user.name  "noitas-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_muni.csv
+          git add output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_muni.csv output/reit_by_station.csv
           git commit -m "chore: quarterly data update" || echo "no changes"
           git push
