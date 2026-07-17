@@ -30,13 +30,12 @@ jobs:
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
         run: |
           python3 edinet_reit_recon.py scan --days 500
-          python3 run_reits.py
-          python3 aggregate_by_muni.py --in reit_properties.csv --out output/reit_by_muni.csv
-          python3 aggregate_by_station.py --in reit_properties.csv --stations input/tokyost_1.csv --neighbors station_neighbors.csv --out output/reit_by_station.csv
+          python3 run_reits.py --out output/reit_properties.csv --report output/reit_parse_report.csv
+          python3 aggregate_by_station.py --in output/reit_properties.csv --stations input/tokyost_1.csv --neighbors station_neighbors.csv --out output/reit_by_station.csv
       - name: Commit outputs
         run: |
           git config user.name  "noitas-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_muni.csv output/reit_by_station.csv reit_properties.csv reit_parse_report.csv
+          git add output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_properties.csv output/reit_parse_report.csv
           git commit -m "chore: quarterly data update" || echo "no changes"
           git push
