@@ -70,6 +70,8 @@ def main():
 
     out_rows = []
     for reit, props in sorted(by_reit.items()):
+        # 鑑定評価額を物件別に開示しない法人(森ヒルズ等)があるため、
+        # 物件数・物件一覧は「全物件」を対象にする。鑑定合計だけ開示分で算出する。
         with_app = [p for p in props if to_float(p.get('appraisal_value')) is not None]
         caps = [to_float(p.get('cap_rate')) for p in props]
         caps = [c for c in caps if c is not None]
@@ -92,10 +94,10 @@ def main():
 
         app_sum = sum(to_float(p.get('appraisal_value')) or 0 for p in with_app) / 100
 
-        # 個別ページ用の物件リスト(鑑定評価額の大きい順)
+        # 個別ページ用の物件リスト(全物件。鑑定評価額の大きい順、無い物件は後ろ)
         def sort_key(p):
-            return to_float(p.get('appraisal_value')) or 0
-        ranked = sorted(with_app, key=sort_key, reverse=True)
+            return to_float(p.get('appraisal_value')) or -1
+        ranked = sorted(props, key=sort_key, reverse=True)
         if args.props_per_company > 0:
             ranked = ranked[:args.props_per_company]
         plist = []
@@ -116,7 +118,8 @@ def main():
             'url': meta.get(reit, {}).get('url', ''),         # 手打ちURL
             'aum_oku': aum,
             'aum_src': aum_src,
-            'property_count': len(with_app),
+            'property_count': len(props),                  # 全物件数
+            'property_count_appraised': len(with_app),      # うち鑑定評価額あり
             'appraisal_sum_oku': round(app_sum) if app_sum else '',
             'cap_median': round(statistics.median(caps), 2) if caps else '',
             'cap_disclosed': len(caps),
@@ -125,7 +128,8 @@ def main():
 
     with open(args.out, 'w', newline='', encoding='utf-8-sig') as f:
         cols = ['reit_name', 'use', 'url', 'aum_oku', 'aum_src', 'property_count',
-                'appraisal_sum_oku', 'cap_median', 'cap_disclosed', 'properties_json']
+                'property_count_appraised', 'appraisal_sum_oku', 'cap_median',
+                'cap_disclosed', 'properties_json']
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
         w.writerows(out_rows)
