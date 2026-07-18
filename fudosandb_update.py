@@ -98,34 +98,66 @@ def POST(path, body):
 def yen_tsubo(rent_yen):
     return round(rent_yen / TSUBO25)
 
-def fetch_muni(code):
-    out = {}
-    ap = GET(f"area-profile/{code}")
-    if ap:
-        out["pop2050"]      = ap.get("population_2050")
-        out["pop_change"]   = round(ap["population_change_rate"]*100,2) if ap.get("population_change_rate") is not None else None
-        out["land_yoy"]     = ap.get("land_price_yoy_change")
-        out["flood_pct"]    = round(ap["flood_risk_area_pct"]*100,1) if ap.get("flood_risk_area_pct") is not None else None
-        out["landslide_pct"]= round(ap["landslide_risk_area_pct"]*100,1) if ap.get("landslide_risk_area_pct") is not None else None
-    er = POST("estimate-rent", {"municipality_code":code, **STD})
-    if er and er.get("estimated_rent_yen"):
-        base = er["estimated_rent_yen"]
-        out["rent_tsubo"]      = yen_tsubo(base)
-        out["rent_tsubo_low"]  = yen_tsubo(base*RANGE_LOW)
-        out["rent_tsubo_high"] = yen_tsubo(base*RANGE_HIGH)
-        out["_rent_base"]      = base   # 利回り計算用(内部)
-    # 地価推移(直近15年 residential。無ければ commercial)
-    lt = GET(f"land-price-trends/{code}")
-    if isinstance(lt, list) and lt:
-        for cat in ("residential","commercial"):
-            ser=[d for d in lt if d.get("use_category")==cat and d.get("avg_price_per_m2")]
-            if ser:
-                ser=sorted(ser,key=lambda d:d["year"])[-15:]
-                out["land_trend_json"]=json.dumps([{"y":d["year"],"v":int(d["avg_price_per_m2"])} for d in ser],ensure_ascii=False)
-                break
-    # 【削除】REIT(同区住宅)の取得はEDINET版(reit_by_station.csv)に置き換わったため不要。
-    # ここで取得してもACF反映時に後段のEDINET版で上書きされるだけで、API呼び出しの無駄
-    # (=レート制限の一因)だったので廃止した。
+# --- キャッシュ＋呼び出し予算 -------------------------------------------
+# FUDOSAN DB APIは1日100回の上限がある。53市区町村×3種=159回で上限を超えるため、
+# 取得結果をリポジトリにキャッシュし、古くなったものだけを予算内で更新する。
+# 項目ごとに更新頻度が違う(人口・地価は年次、賃料は四半期)ので個別にTTLを持つ。
+TTL_DAYS = {"profile": 170, "rent": 80, "trends": 350}
+BUDGET = {"left": 0}          # 残り呼び出し回数
+
+def _age_days(iso):
+    if not iso: return 99999
+    try:
+        t=time.mktime(time.strptime(iso, "%Y-%m-%d"))
+        return (time.time()-t)/86400
+    except Exception:
+        return 99999
+
+def _today(): return time.strftime("%Y-%m-%d")
+
+def fetch_muni(code, cached=None):
+    """キャッシュを引き継ぎつつ、期限切れの項目だけ取得する。予算が尽きたら取得しない。"""
+    out = dict(cached or {})
+    stamps = dict(out.get("_fetched", {}))
+
+    # 1) エリアプロファイル(人口・地価変動・災害リスク) 年次更新
+    if _age_days(stamps.get("profile")) > TTL_DAYS["profile"] and BUDGET["left"] > 0:
+        BUDGET["left"] -= 1
+        ap = GET(f"area-profile/{code}")
+        if ap:
+            out["pop2050"]      = ap.get("population_2050")
+            out["pop_change"]   = round(ap["population_change_rate"]*100,2) if ap.get("population_change_rate") is not None else None
+            out["land_yoy"]     = ap.get("land_price_yoy_change")
+            out["flood_pct"]    = round(ap["flood_risk_area_pct"]*100,1) if ap.get("flood_risk_area_pct") is not None else None
+            out["landslide_pct"]= round(ap["landslide_risk_area_pct"]*100,1) if ap.get("landslide_risk_area_pct") is not None else None
+            stamps["profile"] = _today()
+
+    # 2) 賃料推定(標準条件) 四半期更新
+    if _age_days(stamps.get("rent")) > TTL_DAYS["rent"] and BUDGET["left"] > 0:
+        BUDGET["left"] -= 1
+        er = POST("estimate-rent", {"municipality_code":code, **STD})
+        if er and er.get("estimated_rent_yen"):
+            base = er["estimated_rent_yen"]
+            out["rent_tsubo"]      = yen_tsubo(base)
+            out["rent_tsubo_low"]  = yen_tsubo(base*RANGE_LOW)
+            out["rent_tsubo_high"] = yen_tsubo(base*RANGE_HIGH)
+            out["_rent_base"]      = base   # 利回り計算用(内部)
+            stamps["rent"] = _today()
+
+    # 3) 地価推移(直近15年) 年次更新
+    if _age_days(stamps.get("trends")) > TTL_DAYS["trends"] and BUDGET["left"] > 0:
+        BUDGET["left"] -= 1
+        lt = GET(f"land-price-trends/{code}")
+        if isinstance(lt, list) and lt:
+            for cat in ("residential","commercial"):
+                ser=[d for d in lt if d.get("use_category")==cat and d.get("avg_price_per_m2")]
+                if ser:
+                    ser=sorted(ser,key=lambda d:d["year"])[-15:]
+                    out["land_trend_json"]=json.dumps([{"y":d["year"],"v":int(d["avg_price_per_m2"])} for d in ser],ensure_ascii=False)
+                    stamps["trends"] = _today()
+                    break
+
+    out["_fetched"] = stamps
     return out
 
 code_name = {v:k for k,v in TOKYO.items()}
@@ -135,9 +167,11 @@ def main():
     ap.add_argument("--master",default="tokyost_1.csv")
     ap.add_argument("--prices",default="station_prices.csv")
     ap.add_argument("--out",default="fudosan_enrichment.csv")
-    ap.add_argument("--sleep",type=float,default=1.2,help="市区町村ごとの待機秒(レート制限回避)")
-    ap.add_argument("--min-success",dest="min_success",type=float,default=0.7,
-                    help="この成功率を下回ったらCSVを更新しない(既存温存)")
+    ap.add_argument("--sleep",type=float,default=1.2,help="呼び出し間の待機秒")
+    ap.add_argument("--cache",default="output/fudosan_muni_cache.json",
+                    help="市区町村データのキャッシュ(APIの1日100回制限に対応。リポジトリにコミットする)")
+    ap.add_argument("--max-calls",dest="max_calls",type=int,default=90,
+                    help="1回の実行で使うAPI呼び出しの上限(1日100回制限に対する安全余裕)")
     a=ap.parse_args()
     if not KEY: sys.exit("環境変数 FUDOSANDB_API_KEY が未設定です。")
 
@@ -146,24 +180,48 @@ def main():
     prices=pd.read_csv(a.prices,dtype=str)
     tsubo_map=dict(zip(prices["station"],prices.get("mansion_tsubo_trimmean",pd.Series(dtype=str))))
 
-    cache,miss={},[]
-    targets=sorted(set(m["muni"].dropna()))
-    ok_n=0
-    for i,name in enumerate(targets,1):
-        code=TOKYO.get(name)
-        if not code: miss.append(name); continue
-        v=fetch_muni(code)
+    # --- キャッシュ読み込み(APIの1日上限に対応。前回取得分はそのまま使う) ---
+    cache={}
+    if os.path.exists(a.cache):
+        try:
+            cache=json.load(open(a.cache,encoding="utf-8"))
+            print(f"キャッシュ読込: {len(cache)}市区町村 ({a.cache})")
+        except Exception as e:
+            print("キャッシュ読込失敗(新規作成します):",e)
+
+    BUDGET["left"]=a.max_calls
+    targets=[t for t in sorted(set(m["muni"].dropna())) if TOKYO.get(t)]
+    miss=[t for t in sorted(set(m["muni"].dropna())) if not TOKYO.get(t)]
+
+    # 期限切れが古い順に処理し、予算内で更新する(残りは前回値を使う)
+    def oldest(name):
+        st=(cache.get(name) or {}).get("_fetched") or {}
+        return min([_age_days(st.get(k)) for k in ("profile","rent","trends")] or [99999])*-1
+    targets_sorted=sorted(targets, key=oldest)
+
+    updated=0
+    for i,name in enumerate(targets_sorted,1):
+        before=BUDGET["left"]
+        v=fetch_muni(TOKYO[name], cache.get(name))
         cache[name]=v
-        # 賃料か人口のどちらかが取れていれば「取得成功」とみなす
-        if v.get("rent_tsubo") is not None or v.get("pop2050") is not None: ok_n+=1
-        print(f"  [{i}/{len(targets)}] {name} … "
-              f"賃料{'○' if v.get('rent_tsubo') is not None else '×'} "
-              f"人口{'○' if v.get('pop2050') is not None else '×'}")
-        time.sleep(a.sleep)          # レート制限回避(既定1.2秒)
+        used=before-BUDGET["left"]
+        if used:
+            updated+=1
+            print(f"  [{i}/{len(targets_sorted)}] {name} … API{used}回使用 "
+                  f"(賃料{'○' if v.get('rent_tsubo') is not None else '×'} "
+                  f"人口{'○' if v.get('pop2050') is not None else '×'}) 残予算{BUDGET['left']}")
+            time.sleep(a.sleep)
+        if BUDGET["left"]<=0:
+            print(f"  → 予算({a.max_calls}回)を使い切りました。残りは次回実行で更新します。")
+            break
     if miss: print("コード未知(スキップ):",miss)
-    n_target=len([t for t in targets if TOKYO.get(t)])
-    rate = ok_n/n_target if n_target else 0
-    print(f"\n取得成功 {ok_n}/{n_target} 市区町村 ({rate*100:.0f}%) / API失敗 {FAIL['count']}件")
+
+    # キャッシュ保存(次回実行で差分だけ取りに行けるようにする)
+    os.makedirs(os.path.dirname(a.cache) or ".", exist_ok=True)
+    json.dump(cache, open(a.cache,"w",encoding="utf-8"), ensure_ascii=False, indent=1)
+    have=sum(1 for v in cache.values() if v.get("rent_tsubo") is not None or v.get("pop2050") is not None)
+    print(f"\n更新 {updated}市区町村 / API使用 {a.max_calls-BUDGET['left']}回 / "
+          f"キャッシュ保有 {have}/{len(targets)}市区町村 / API失敗 {FAIL['count']}件")
 
     rows=[]
     for _,r in m.iterrows():
@@ -190,10 +248,8 @@ def main():
     # レート制限(429)等で取得が大きく欠けたとき、空/不完全なCSVで既存を上書きしない。
     # 上書きすると駅ページの賃料・人口が消えるため、既存CSVを温存して警告のみ出す。
     # (ワークフローを止めないよう終了コードは0。git diffが出ないので既存が保たれる)
-    if rate < a.min_success or out.empty:
-        print(f"\n[中止] 取得成功率 {rate*100:.0f}% が閾値 {a.min_success*100:.0f}% 未満のため、"
-              f"{a.out} を更新しませんでした(既存データを温存)。")
-        print("       レート制限(429)の可能性があります。時間を置いて再実行してください。")
+    if out.empty:
+        print(f"\n[中止] 有効データが0件のため {a.out} を更新しませんでした(既存データを温存)。")
         return
 
     out.to_csv(a.out,index=False,encoding="utf-8")
