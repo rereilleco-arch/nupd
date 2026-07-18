@@ -462,8 +462,14 @@ def parse_property_tables(html):
     return cleaned, tables_used
 
 
-def fetch_honbun_html(doc_id, api_key, timeout=120):
-    """EDINET から type=1 (生XBRL) を取得し、本文HTML(最大のもの)を返す"""
+def fetch_honbun_htmls(doc_id, api_key, timeout=120):
+    """EDINET から type=1 (生XBRL) を取得し、本文HTMLを『全て』返す。
+
+    REITの有報は本文が複数ファイルに分割されていることがあり
+    (0101010_honbun / 0102010_honbun / ...)、物件表と鑑定評価表が
+    別ファイルに入る法人がある。最大の1ファイルだけを読むと取りこぼすため、
+    全ての本文HTMLを返して呼び出し側でマージする。
+    """
     import requests
     r = requests.get(
         f"https://api.edinet-fsa.go.jp/api/v2/documents/{doc_id}",
@@ -474,6 +480,30 @@ def fetch_honbun_html(doc_id, api_key, timeout=120):
              if '/PublicDoc/' in n and '_honbun_' in n and n.endswith('.htm')]
     if not cands:
         raise RuntimeError(f"本文HTMLが見つかりません: {z.namelist()[:10]}")
-    # 物件表は本文の大きいファイルに入っている
-    best = max(cands, key=lambda n: len(z.read(n)))
-    return z.read(best).decode('utf-8', errors='replace')
+    # 大きいファイル順(物件表は大きいファイルにあることが多い)
+    cands.sort(key=lambda n: len(z.read(n)), reverse=True)
+    return [z.read(n).decode('utf-8', errors='replace') for n in cands]
+
+
+def fetch_honbun_html(doc_id, api_key, timeout=120):
+    """後方互換: 最大の本文HTMLを1つだけ返す。"""
+    return fetch_honbun_htmls(doc_id, api_key, timeout)[0]
+
+
+def merge_property_maps(maps):
+    """複数ファイルのパース結果を物件名でマージする。
+    先に見つかった値を優先し、Noneの項目だけ後続ファイルの値で補完する。
+    (物件表と鑑定評価表が別ファイルにある法人に対応)"""
+    merged = {}
+    for m in maps:
+        for name, rec in m.items():
+            if name not in merged:
+                merged[name] = dict(rec)
+                continue
+            base = merged[name]
+            for k, v in rec.items():
+                if v is None or v == '':
+                    continue
+                if base.get(k) is None or base.get(k) == '':
+                    base[k] = v
+    return merged

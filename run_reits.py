@@ -29,7 +29,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from reit_parser import parse_property_tables, fetch_honbun_html
+from reit_parser import parse_property_tables, fetch_honbun_htmls, merge_property_maps
 
 FIELDS = ['reit_name', 'edinet_code', 'doc_id', 'period', 'property_name', 'use_type',
           'acquisition_price', 'book_value', 'appraisal_value', 'cap_rate', 'appraiser',
@@ -86,8 +86,16 @@ def main():
         desc = r.get('最新docDescription', '')
         print(f"[{i}/{len(targets)}] {name} ({doc_id}) ...", end=' ', flush=True)
         try:
-            html = fetch_honbun_html(doc_id, api)
-            merged, used = parse_property_tables(html)
+            # 有報の本文HTMLは複数ファイルに分割されていることがあるため全て読み、
+            # 物件名でマージする(物件表と鑑定評価表が別ファイルの法人に対応)
+            htmls = fetch_honbun_htmls(doc_id, api)
+            maps, used = [], []
+            for h in htmls:
+                mp, us = parse_property_tables(h)
+                if mp:
+                    maps.append(mp)
+                    used.extend(us)
+            merged = merge_property_maps(maps)
         except Exception as e:
             print(f"ERROR: {e}")
             report.append({'reit_name': name, 'doc_id': doc_id, 'status': f'ERROR: {e}',
