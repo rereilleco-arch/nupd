@@ -491,19 +491,24 @@ def fetch_honbun_html(doc_id, api_key, timeout=120):
 
 
 def merge_property_maps(maps):
-    """複数ファイルのパース結果を物件名でマージする。
-    先に見つかった値を優先し、Noneの項目だけ後続ファイルの値で補完する。
-    (物件表と鑑定評価表が別ファイルにある法人に対応)"""
-    merged = {}
-    for m in maps:
+    """複数ファイルのパース結果をマージする。
+
+    【方針】最初のファイル(=最大の本文HTML。物件表が入っている)で見つかった物件だけを対象とし、
+    後続ファイルは「既に見つかっている物件の、欠けている項目を埋める」用途に限定する。
+    後続ファイルから新規の物件名を追加すると、本文中の物件一覧(金額を持たない列挙)まで
+    拾ってしまい、中身の無い行が増えて充足率が下がるため(実データで確認済み)。
+    """
+    if not maps:
+        return {}
+    merged = {name: dict(rec) for name, rec in maps[0].items()}
+    for m in maps[1:]:
         for name, rec in m.items():
             if name not in merged:
-                merged[name] = dict(rec)
-                continue
+                continue                      # 新規物件は追加しない(ノイズ防止)
             base = merged[name]
             for k, v in rec.items():
                 if v is None or v == '':
                     continue
                 if base.get(k) is None or base.get(k) == '':
-                    base[k] = v
+                    base[k] = v               # 欠けている項目だけ補完
     return merged
