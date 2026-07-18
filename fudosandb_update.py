@@ -53,14 +53,47 @@ def _data(r):
     except: return None
     return j.get("data", j) if isinstance(j, dict) else j
 
+# --- HTTP: 429/5xx は指数バックオフで再試行する ---------------------------
+MAX_RETRY = 5
+FAIL = {"count": 0}          # 最終的に失敗した呼び出し数(安全装置の判定に使う)
+
+def _request(method, path, **kw):
+    """429(レート制限)・5xx は待って再試行。Retry-Afterがあれば従う。"""
+    url = f"{BASE}/{path}"
+    wait = 2.0
+    for attempt in range(MAX_RETRY):
+        try:
+            r = requests.request(method, url, timeout=60, **kw)
+        except requests.RequestException as e:
+            if attempt == MAX_RETRY - 1:
+                FAIL["count"] += 1
+                print(f"  ! 通信失敗 {path}: {e}")
+                return None
+            time.sleep(wait); wait *= 2
+            continue
+        if r.status_code == 200:
+            return _data(r)
+        if r.status_code == 429 or 500 <= r.status_code < 600:
+            ra = r.headers.get("Retry-After")
+            sleep_s = float(ra) if (ra and str(ra).replace('.','',1).isdigit()) else wait
+            if attempt == MAX_RETRY - 1:
+                FAIL["count"] += 1
+                print(f"  ! HTTP {r.status_code} 再試行上限 {path}")
+                return None
+            print(f"  . HTTP {r.status_code} → {sleep_s:.0f}秒待機して再試行 ({path})")
+            time.sleep(sleep_s); wait *= 2
+            continue
+        # 4xx(429以外)は再試行しても無駄
+        FAIL["count"] += 1
+        print(f"  ! HTTP {r.status_code} {path}")
+        return None
+    return None
+
 def GET(path):
-    r = requests.get(f"{BASE}/{path}", headers={"X-API-Key":KEY}, timeout=60)
-    return _data(r) if r.status_code==200 else None
+    return _request("GET", path, headers={"X-API-Key":KEY})
 
 def POST(path, body):
-    r = requests.post(f"{BASE}/{path}", headers={"X-API-Key":KEY,"Content-Type":"application/json"},
-                      json=body, timeout=60)
-    return _data(r) if r.status_code==200 else None
+    return _request("POST", path, headers={"X-API-Key":KEY,"Content-Type":"application/json"}, json=body)
 
 def yen_tsubo(rent_yen):
     return round(rent_yen / TSUBO25)
@@ -90,21 +123,9 @@ def fetch_muni(code):
                 ser=sorted(ser,key=lambda d:d["year"])[-15:]
                 out["land_trend_json"]=json.dumps([{"y":d["year"],"v":int(d["avg_price_per_m2"])} for d in ser],ensure_ascii=False)
                 break
-    # REIT 同区住宅
-    reit = requests.get(f"{BASE}/reit/properties", headers={"X-API-Key":KEY},
-                        params={"area":code_name.get(code,""),"asset_type":"住宅","limit":20}, timeout=60)
-    props = _data(reit).get("properties") if (reit.status_code==200 and isinstance(_data(reit),dict)) else None
-    if props:
-        caps=[p.get("noi_cap_rate_pct") or p.get("cap_rate_pct") for p in props]
-        caps=[c for c in caps if isinstance(c,(int,float))]
-        out["reit_count"]=len(props)
-        out["reit_cap_median"]=round(statistics.median(caps),2) if caps else None
-        ex=[]
-        for p in props[:5]:
-            ex.append({"物件":p.get("property_name"),"REIT":p.get("reit_name"),
-                       "取得百万":p.get("acquisition_million_yen"),"鑑定百万":p.get("appraisal_million_yen"),
-                       "NOI利回り":p.get("noi_cap_rate_pct") or p.get("cap_rate_pct")})
-        out["reit_examples"]=json.dumps(ex,ensure_ascii=False)
+    # 【削除】REIT(同区住宅)の取得はEDINET版(reit_by_station.csv)に置き換わったため不要。
+    # ここで取得してもACF反映時に後段のEDINET版で上書きされるだけで、API呼び出しの無駄
+    # (=レート制限の一因)だったので廃止した。
     return out
 
 code_name = {v:k for k,v in TOKYO.items()}
@@ -114,6 +135,9 @@ def main():
     ap.add_argument("--master",default="tokyost_1.csv")
     ap.add_argument("--prices",default="station_prices.csv")
     ap.add_argument("--out",default="fudosan_enrichment.csv")
+    ap.add_argument("--sleep",type=float,default=1.2,help="市区町村ごとの待機秒(レート制限回避)")
+    ap.add_argument("--min-success",dest="min_success",type=float,default=0.7,
+                    help="この成功率を下回ったらCSVを更新しない(既存温存)")
     a=ap.parse_args()
     if not KEY: sys.exit("環境変数 FUDOSANDB_API_KEY が未設定です。")
 
@@ -123,11 +147,23 @@ def main():
     tsubo_map=dict(zip(prices["station"],prices.get("mansion_tsubo_trimmean",pd.Series(dtype=str))))
 
     cache,miss={},[]
-    for name in sorted(set(m["muni"].dropna())):
+    targets=sorted(set(m["muni"].dropna()))
+    ok_n=0
+    for i,name in enumerate(targets,1):
         code=TOKYO.get(name)
         if not code: miss.append(name); continue
-        cache[name]=fetch_muni(code); time.sleep(0.4)
+        v=fetch_muni(code)
+        cache[name]=v
+        # 賃料か人口のどちらかが取れていれば「取得成功」とみなす
+        if v.get("rent_tsubo") is not None or v.get("pop2050") is not None: ok_n+=1
+        print(f"  [{i}/{len(targets)}] {name} … "
+              f"賃料{'○' if v.get('rent_tsubo') is not None else '×'} "
+              f"人口{'○' if v.get('pop2050') is not None else '×'}")
+        time.sleep(a.sleep)          # レート制限回避(既定1.2秒)
     if miss: print("コード未知(スキップ):",miss)
+    n_target=len([t for t in targets if TOKYO.get(t)])
+    rate = ok_n/n_target if n_target else 0
+    print(f"\n取得成功 {ok_n}/{n_target} 市区町村 ({rate*100:.0f}%) / API失敗 {FAIL['count']}件")
 
     rows=[]
     for _,r in m.iterrows():
@@ -144,12 +180,24 @@ def main():
         d["fudosan_source"]="FUDOSAN DB(国交省データ・推定/集計値) 標準条件:25㎡/1K/築10年/徒歩5分"
         rows.append(d)
 
+    # REIT系(reit_cap_median/reit_count/reit_examples)はEDINET版CSVが担当するため出力しない
     cols=["station","rent_tsubo","rent_tsubo_low","rent_tsubo_high","yield_est",
           "pop2050","pop_change","land_yoy","flood_pct","landslide_pct","land_trend_json",
-          "reit_cap_median","reit_count","reit_examples","fudosan_muni","fudosan_updated","fudosan_source"]
+          "fudosan_muni","fudosan_updated","fudosan_source"]
     out=pd.DataFrame(rows).drop_duplicates("station").reindex(columns=cols)
+
+    # --- 安全装置 -------------------------------------------------------
+    # レート制限(429)等で取得が大きく欠けたとき、空/不完全なCSVで既存を上書きしない。
+    # 上書きすると駅ページの賃料・人口が消えるため、既存CSVを温存して警告のみ出す。
+    # (ワークフローを止めないよう終了コードは0。git diffが出ないので既存が保たれる)
+    if rate < a.min_success or out.empty:
+        print(f"\n[中止] 取得成功率 {rate*100:.0f}% が閾値 {a.min_success*100:.0f}% 未満のため、"
+              f"{a.out} を更新しませんでした(既存データを温存)。")
+        print("       レート制限(429)の可能性があります。時間を置いて再実行してください。")
+        return
+
     out.to_csv(a.out,index=False,encoding="utf-8")
-    print(f"出力 {len(out)}駅 → {a.out}  利回り算出:{out['yield_est'].notna().sum()}  REIT中央値あり:{out['reit_cap_median'].notna().sum()}")
+    print(f"出力 {len(out)}駅 → {a.out}  利回り算出:{out['yield_est'].notna().sum()}")
 
 if __name__=="__main__":
     main()
