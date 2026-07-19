@@ -115,14 +115,22 @@ def _age_days(iso):
 
 def _today(): return time.strftime("%Y-%m-%d")
 
-def fetch_muni(code, cached=None):
-    """キャッシュを引き継ぎつつ、期限切れの項目だけ取得する。予算が尽きたら取得しない。"""
-    out = dict(cached or {})
-    stamps = dict(out.get("_fetched", {}))
+def fetch_one(kind, code, out):
+    """指定した1項目だけ取得して out を更新する。API呼び出しは1回。
+    成功したら True。項目ごとに独立して呼べるようにすることで、
+    予算が足りない時に『賃料を優先し、年次データは次回に回す』制御ができる。"""
+    if kind == "rent":
+        er = POST("estimate-rent", {"municipality_code": code, **STD})
+        if er and er.get("estimated_rent_yen"):
+            base = er["estimated_rent_yen"]
+            out["rent_tsubo"]      = yen_tsubo(base)
+            out["rent_tsubo_low"]  = yen_tsubo(base*RANGE_LOW)
+            out["rent_tsubo_high"] = yen_tsubo(base*RANGE_HIGH)
+            out["_rent_base"]      = base
+            return True
+        return False
 
-    # 1) エリアプロファイル(人口・地価変動・災害リスク) 年次更新
-    if _age_days(stamps.get("profile")) > TTL_DAYS["profile"] and BUDGET["left"] > 0:
-        BUDGET["left"] -= 1
+    if kind == "profile":
         ap = GET(f"area-profile/{code}")
         if ap:
             out["pop2050"]      = ap.get("population_2050")
@@ -130,35 +138,23 @@ def fetch_muni(code, cached=None):
             out["land_yoy"]     = ap.get("land_price_yoy_change")
             out["flood_pct"]    = round(ap["flood_risk_area_pct"]*100,1) if ap.get("flood_risk_area_pct") is not None else None
             out["landslide_pct"]= round(ap["landslide_risk_area_pct"]*100,1) if ap.get("landslide_risk_area_pct") is not None else None
-            stamps["profile"] = _today()
+            return True
+        return False
 
-    # 2) 賃料推定(標準条件) 四半期更新
-    if _age_days(stamps.get("rent")) > TTL_DAYS["rent"] and BUDGET["left"] > 0:
-        BUDGET["left"] -= 1
-        er = POST("estimate-rent", {"municipality_code":code, **STD})
-        if er and er.get("estimated_rent_yen"):
-            base = er["estimated_rent_yen"]
-            out["rent_tsubo"]      = yen_tsubo(base)
-            out["rent_tsubo_low"]  = yen_tsubo(base*RANGE_LOW)
-            out["rent_tsubo_high"] = yen_tsubo(base*RANGE_HIGH)
-            out["_rent_base"]      = base   # 利回り計算用(内部)
-            stamps["rent"] = _today()
-
-    # 3) 地価推移(直近15年) 年次更新
-    if _age_days(stamps.get("trends")) > TTL_DAYS["trends"] and BUDGET["left"] > 0:
-        BUDGET["left"] -= 1
+    if kind == "trends":
         lt = GET(f"land-price-trends/{code}")
         if isinstance(lt, list) and lt:
             for cat in ("residential","commercial"):
                 ser=[d for d in lt if d.get("use_category")==cat and d.get("avg_price_per_m2")]
                 if ser:
                     ser=sorted(ser,key=lambda d:d["year"])[-15:]
-                    out["land_trend_json"]=json.dumps([{"y":d["year"],"v":int(d["avg_price_per_m2"])} for d in ser],ensure_ascii=False)
-                    stamps["trends"] = _today()
-                    break
+                    out["land_trend_json"]=json.dumps(
+                        [{"y":d["year"],"v":int(d["avg_price_per_m2"])} for d in ser],ensure_ascii=False)
+                    return True
+        return False
 
-    out["_fetched"] = stamps
-    return out
+    return False
+
 
 code_name = {v:k for k,v in TOKYO.items()}
 
@@ -193,35 +189,48 @@ def main():
     targets=[t for t in sorted(set(m["muni"].dropna())) if TOKYO.get(t)]
     miss=[t for t in sorted(set(m["muni"].dropna())) if not TOKYO.get(t)]
 
-    # 期限切れが古い順に処理し、予算内で更新する(残りは前回値を使う)
-    def oldest(name):
-        st=(cache.get(name) or {}).get("_fetched") or {}
-        return min([_age_days(st.get(k)) for k in ("profile","rent","trends")] or [99999])*-1
-    targets_sorted=sorted(targets, key=oldest)
+    # --- 期限切れの「項目」を洗い出してタスク化 -------------------------------
+    # 優先度: 賃料(四半期更新の主役) > 人口・災害(年次) > 地価推移(年次)
+    # これにより予算が足りない回でも賃料は必ず全件更新され、年次データが次回に回る。
+    PRIORITY={"rent":0, "profile":1, "trends":2}
+    tasks=[]
+    for name in targets:
+        v=cache.get(name) or {}
+        st=v.get("_fetched") or {}
+        for kind,ttl in TTL_DAYS.items():
+            age=_age_days(st.get(kind))
+            if age > ttl:
+                tasks.append((PRIORITY[kind], -age, name, kind))
+    tasks.sort()   # 優先度→古い順
 
-    updated=0
-    for i,name in enumerate(targets_sorted,1):
-        before=BUDGET["left"]
-        v=fetch_muni(TOKYO[name], cache.get(name))
+    print(f"要更新: {len(tasks)}項目 (賃料{sum(1 for t in tasks if t[3]=='rent')} / "
+          f"人口{sum(1 for t in tasks if t[3]=='profile')} / "
+          f"地価{sum(1 for t in tasks if t[3]=='trends')}) / 予算{a.max_calls}回")
+
+    done=0; deferred=0
+    for _,_,name,kind in tasks:
+        if BUDGET["left"] <= 0:
+            deferred += 1
+            continue
+        BUDGET["left"] -= 1
+        v=dict(cache.get(name) or {})
+        stamps=dict(v.get("_fetched") or {})
+        if fetch_one(kind, TOKYO[name], v):
+            stamps[kind]=_today()
+            done+=1
+        v["_fetched"]=stamps
         cache[name]=v
-        used=before-BUDGET["left"]
-        if used:
-            updated+=1
-            print(f"  [{i}/{len(targets_sorted)}] {name} … API{used}回使用 "
-                  f"(賃料{'○' if v.get('rent_tsubo') is not None else '×'} "
-                  f"人口{'○' if v.get('pop2050') is not None else '×'}) 残予算{BUDGET['left']}")
-            time.sleep(a.sleep)
-        if BUDGET["left"]<=0:
-            print(f"  → 予算({a.max_calls}回)を使い切りました。残りは次回実行で更新します。")
-            break
+        time.sleep(a.sleep)
+    if deferred:
+        print(f"  → 予算切れのため {deferred}項目は次回実行に繰り越します(年次データ優先で後回し)")
     if miss: print("コード未知(スキップ):",miss)
 
     # キャッシュ保存(次回実行で差分だけ取りに行けるようにする)
     os.makedirs(os.path.dirname(a.cache) or ".", exist_ok=True)
     json.dump(cache, open(a.cache,"w",encoding="utf-8"), ensure_ascii=False, indent=1)
-    have=sum(1 for v in cache.values() if v.get("rent_tsubo") is not None or v.get("pop2050") is not None)
-    print(f"\n更新 {updated}市区町村 / API使用 {a.max_calls-BUDGET['left']}回 / "
-          f"キャッシュ保有 {have}/{len(targets)}市区町村 / API失敗 {FAIL['count']}件")
+    have=sum(1 for t in targets if (cache.get(t) or {}).get("rent_tsubo") is not None)
+    print(f"\n更新 {done}項目 / API使用 {a.max_calls-BUDGET['left']}回 / "
+          f"賃料データ保有 {have}/{len(targets)}市区町村 / API失敗 {FAIL['count']}件")
 
     rows=[]
     for _,r in m.iterrows():
