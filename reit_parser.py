@@ -83,12 +83,18 @@ COLUMN_PATTERNS = [
     ('appraisal_value',  r'(不動産鑑定評価額|期末算定価格|期末算定価額|期末評価額|鑑定評価額|期末鑑定評価額|評価額)'),
     # 【順序が重要】「最終還元利回り」は「還元利回り」を含むため、先に最終還元利回りを確定させる。
     # そうしないとcap_rateが最終還元利回りの列を取ってしまう。
-    ('terminal_cap',     r'最終還元利回り'),
+    #   なお平和不動産リート等は列名を「還元利回り」とせず、多段ヘッダの
+    #   「収益価格 > ＤＣＦ法 > 利回り」という形で最終還元利回りを表す。
+    #   (有報の注記:「ＤＣＦ法における『利回り』の欄には最終還元利回りを記載」)
+    ('terminal_cap',     r'(最終還元利回り|(?:ＤＣＦ法|DCF法|ＤＣＦ|DCF)[^|]{0,20}利回り)'),
     ('discount_rate',    r'割引率'),
     # cap rate: 必ず「利回り」または「レート」を含む列だけを対象にする。
     # (2段ヘッダ結合で「直接還元法 収益価格(百万円)」のような列ができるため、
     #  「直接還元」だけでマッチさせると金額を利回りとして誤取得する)
-    ('cap_rate',         r'(直接還元利回り|還元利回り|キャップレート|cap\s*rate|鑑定NOI利回り|NOI利回り|NCF利回り)'),
+    #  平和不動産リート等は「収益価格 > 直接還元法 > 利回り」という多段ヘッダで
+    #  還元利回りを表すため、その形も拾う(注記:「直接還元法における『利回り』の欄には
+    #  還元利回りを記載」)。「直接還元法 価格」等の金額列は利回りを含まないので誤取得しない。
+    ('cap_rate',         r'(直接還元利回り|還元利回り|キャップレート|cap\s*rate|鑑定NOI利回り|NOI利回り|NCF利回り|(?:直接還元法|直接還元)[^|]{0,20}利回り)'),
     ('appraiser',        r'鑑定(評価)?機関|鑑定会社|不動産鑑定'),
     ('investment_ratio', r'投資比率'),
     ('location',         r'所在地|所在'),
@@ -349,17 +355,58 @@ def combine_headers(matrix, hi, depth=2):
     return out
 
 
+def disambiguate_yield_headers(header):
+    """多段ヘッダ結合後、単に「利回り」としか書かれていない列を直前列から判別する。
+
+    平和不動産リート等は「直接還元法」「ＤＣＦ法」を利回り列の親ではなく
+    *隣の列*(価格列)の見出しとして置くため、結合すると
+        col: '… 収益価格（百万円） 直接還元法'   ← 直接還元法の価格
+        col: '… 収益価格（百万円） 利回り(注3)'  ← 還元利回り
+        col: '… 収益価格（百万円） ＤＣＦ法'      ← DCF法の価格
+        col: '… 収益価格（百万円） 利回り(注3)'  ← 最終還元利回り
+    となり、2つの利回り列が同一文字列になって区別できない。
+    有報の注記どおり「直接還元法の次の利回り＝還元利回り」「ＤＣＦ法の次の利回り＝
+    最終還元利回り」として、ヘッダ文字列を書き換えて後段のマッチに回す。
+    """
+    out = list(header)
+    for i, h in enumerate(out):
+        if '利回り' not in h:
+            continue
+        # 既に種別が明示されている列は触らない
+        if re.search(r'還元利回り|割引率|NOI|NCF|キャップレート', h):
+            continue
+        prev = out[i - 1] if i > 0 else ''
+        if re.search(r'ＤＣＦ|DCF', prev):
+            out[i] = h + ' 最終還元利回り'
+        elif re.search(r'直接還元', prev):
+            out[i] = h + ' 還元利回り'
+    return out
+
+
+# ヘッダ判定の前に取り除く「注記番号」「単位」などの括弧書き。
+# 例: 「利回り(注3)」「鑑定評価額(百万円)(注2)」「還元利回り（％）」
+_HEADER_PAREN_RX = re.compile(r'[（(][^（()）]*[)）]')
+
+
 def _is_header_like(row):
-    """その行がヘッダの続き(2段目)に見えるか。
+    """その行がヘッダの続き(2段目以降)に見えるか。
     数値が1つでも含まれる行はデータ行とみなす(ヘッダに数値は基本入らない)。
     ※データ行をヘッダと誤認すると、その行の物件が丸ごと欠落する。
+
+    ただし「利回り(注3)」「鑑定評価額(百万円)(注2)」のように、
+    注記番号や単位を括弧書きで持つヘッダは実在する(平和不動産リート等)。
+    括弧の中身を除いてから数値判定しないと、多段ヘッダを1段しか読めず、
+    「直接還元法／利回り」等の列名を取りこぼす。
     """
     nonempty = [c for c in row if c]
     if not nonempty:
         return False   # 空行はヘッダ2段目ではない(結合しても無意味)
     for c in nonempty:
-        if to_num(c) is not None:
-            return False   # 数値を含む = データ行
+        stripped = _HEADER_PAREN_RX.sub('', c).strip()
+        if not stripped:
+            continue   # 括弧だけのセル(単位のみ等)は判定材料にしない
+        if to_num(stripped) is not None:
+            return False   # 括弧を除いても数値 = データ行
     return True
 
 
@@ -392,6 +439,7 @@ def parse_property_tables(html):
                    and _is_header_like(matrix[hi + depth])):
                 depth += 1
             header = combine_headers(matrix, hi, depth)
+            header = disambiguate_yield_headers(header)
             mapping = map_columns(header)
             if not is_property_table(mapping, len(header)):
                 continue
