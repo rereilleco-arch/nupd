@@ -160,6 +160,12 @@ def build(df1, df2, out_path, period_label='', source_label='', updated=''):
                 ish=g['isshu'].dropna()
                 r['land_isshu_median']=int(round(ish.median())) if len(ish) else ''
                 r['land_isshu_mean']=int(round(ish.mean())) if len(ish) else ''
+                # 一種単価の算出母数(容積率が取れた取引のみ)。土地の取引件数とは異なる。
+                r['land_isshu_count']=int(len(ish))
+                # 注: 一種単価は外れ値除外(trimmean)を行わない。価格・坪単価の外れ値は
+                # 入力誤りや特殊事情の取引であることが多い一方、一種単価のばらつきは
+                # 用途地域・容積率の違いという実態を反映しており、除外すると市場の幅を
+                # 削って実勢より低く見せてしまうため(表示側の注記でもその旨を明示)。
             elif atype=='house':
                 r['house_floor_median']=int(round(g['floor'].median())) if g['floor'].notna().any() else ''
                 r['house_land_median']=int(round(g['area'].median())) if g['area'].notna().any() else ''
