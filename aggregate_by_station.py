@@ -36,10 +36,13 @@ RESI_USE = re.compile(r'居住|住宅|レジデン|共同住宅')
 NONRESI_USE = re.compile(r'オフィス|事務所|商業|物流|ホテル|宿泊|倉庫|店舗|事業所|底地|その他')
 NONRESI_NAME = re.compile(r'Dプロジェクト|ロジ|物流|ロジスティ|DPL|プロロジス|GLP|オフィス|'
                           r'センタービル|モール|アウトレット|ショッピング|ホテル')
-RESI_NAME = re.compile(r'レジデン|レジデンス|ハイツ|コーポ|メゾン|コンフォリア|プラウド|'
+RESI_NAME = re.compile(r'レジデン|レジデンス|レジディア|ハイツ|コーポ|メゾン|コンフォリア|プラウド|'
                        r'パークアクシス|アクシス|カーサ|ヴィラ|ガーデンホームズ|'
-                       r'S-FORT|S-RESIDENCE|プロシード|アルティザ')
-RESI_REIT = re.compile(r'レジデンシャル|アコモデーション|コンフォリア|リビング|プロシード|サムティ・レジデン')
+                       r'S-FORT|S-RESIDENCE|プロシード|アルティザ|ラグゼナ|カスタリア')
+# 「アドバンス・レジデンス投資法人」は法人名が『レジデンス』で、旧版の
+# 『レジデンシャル』に一致せず、住宅特化型なのに288件全てが非住宅と判定されていた。
+RESI_REIT = re.compile(r'レジデンシャル|レジデンス|アコモデーション|コンフォリア|リビング|'
+                       r'プロシード|サムティ・レジデン')
 
 
 def is_residential(r):
@@ -177,6 +180,23 @@ def load_neighbors(path):
     return out
 
 
+def load_location_master(path):
+    """reit_locations.csv(公式サイト由来の恒久データ)を読む。
+
+    有報の物件表に住所を載せない法人があり(ARI・コンフォリア・大和証券リビング・
+    KDX・野村MF 等)、そのままでは extract_muni() が None を返して駅ページから
+    消える。公式サイトの所在地で補完する。有報の location が有る物件には触らない。
+    """
+    out = {}
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            for r in csv.DictReader(f):
+                out[(r['reit_name'], r['property_name'])] = r['location']
+    except FileNotFoundError:
+        pass
+    return out
+
+
 def to_float(s):
     try:
         return float(s) if s not in (None, '') else None
@@ -196,6 +216,9 @@ def main():
     ap.add_argument('--stations', default='input/tokyost_1.csv')
     ap.add_argument('--neighbors', default='station_neighbors.csv',
                     help='近隣駅リスト(station,neighbors,neighbor_dists)。恒久データ。')
+    ap.add_argument('--locations', default='reit_locations.csv',
+                    help='REIT公式サイト由来の物件所在地(恒久データ)。'
+                         '有報に住所が無い法人の補完に使う。無ければ補完しない。')
     ap.add_argument('--out', default='reit_by_station.csv')
     ap.add_argument('--limit', type=int, default=0,
                     help='駅ごとの事例保持件数(0=全件)。表示件数はプラグイン側で絞るため既定は全件。')
@@ -203,12 +226,41 @@ def main():
 
     # 住宅REIT物件を市区町村ごとに集める
     with open(args.infile, encoding='utf-8-sig') as f:
-        props = [r for r in csv.DictReader(f) if is_residential(r)]
+        all_props = list(csv.DictReader(f))
+    props = [r for r in all_props if is_residential(r)]
+
+    # 有報に住所が無い物件を公式サイト由来データで補完する。
+    # 出所を location_source に残す(一次データと二次データを混ぜない)。
+    locmaster = load_location_master(args.locations)
+    filled_from_master = 0
+    for r in props:
+        if (r.get('location') or '').strip():
+            r['location_source'] = '有報'
+            continue
+        loc = locmaster.get((r.get('reit_name', ''), r.get('property_name', '')))
+        if loc:
+            r['location'] = loc
+            r['location_source'] = 'REIT公式'
+            filled_from_master += 1
+        else:
+            r['location_source'] = ''
+
+    # 脱落の内訳を数える。住宅と判定されても location が空だと extract_muni() が
+    # None を返し、その物件は駅ページに一切出ない。件数が急に減った場合に
+    # パース側の劣化なのかを、このログだけで切り分けられるようにする。
+    drop_no_loc = drop_other_pref = 0
+    drop_by_reit = {}
 
     by_muni = {}
     for r in props:
         muni = extract_muni(r.get('location'))
         if not muni:
+            if not (r.get('location') or '').strip():
+                drop_no_loc += 1
+                k = r.get('reit_name', '')
+                drop_by_reit[k] = drop_by_reit.get(k, 0) + 1
+            else:
+                drop_other_pref += 1
             continue
         r['_town'] = extract_town(r.get('location', ''))
         r['_cap'] = to_float(r.get('cap_rate'))
@@ -305,12 +357,55 @@ def main():
             'reit_examples': json.dumps(examples, ensure_ascii=False),
         })
 
+    # 上書き前に旧版を読み、差分を出す(別途 diff を取らなくても変化に気づけるように)
+    prev = {}
+    try:
+        with open(args.out, encoding='utf-8-sig') as f:
+            for r in csv.DictReader(f):
+                prev[r['station']] = r
+    except FileNotFoundError:
+        pass
+
     with open(args.out, 'w', newline='', encoding='utf-8-sig') as f:
         w = csv.DictWriter(f, fieldnames=['station', 'reit_cap_median', 'reit_count', 'reit_examples'])
         w.writeheader()
         w.writerows(out_rows)
 
+    # ---- 実行サマリ ----
     print(f"駅ごと近接事例を生成: {len(out_rows)}駅 -> {args.out}")
+    print(f"  住宅判定 {len(props)}件 / 全{len(all_props)}件")
+    print(f"  区が引けて採用 {sum(len(v) for v in by_muni.values())}件")
+    print(f"  公式サイト由来で住所を補完: {filled_from_master}件 "
+          f"(マスタ {len(locmaster)}件)")
+    print(f"  脱落: location欄が空 {drop_no_loc}件 / 東京都外 {drop_other_pref}件")
+    if drop_by_reit:
+        top = sorted(drop_by_reit.items(), key=lambda x: -x[1])[:5]
+        print("  location欠損の多い法人: " + ', '.join(f'{k} {v}件' for k, v in top))
+
+    if prev:
+        now = {r['station']: r for r in out_rows}
+        added = sorted(set(now) - set(prev))
+        removed = sorted(set(prev) - set(now))
+        changed = [s_ for s_ in set(now) & set(prev)
+                   if now[s_]['reit_examples'] != prev[s_]['reit_examples']
+                   or str(now[s_]['reit_count']) != str(prev[s_]['reit_count'])]
+        print(f"\n[前回との差分] 駅 追加{len(added)} / 削除{len(removed)} / 内容変化{len(changed)}")
+        if removed:
+            print(f"  削除された駅(要確認): {removed[:10]}")
+        # 件数が大きく減った駅は劣化の疑いがあるので個別に出す
+        worse = []
+        for s_ in set(now) & set(prev):
+            try:
+                a, b = int(now[s_]['reit_count']), int(prev[s_]['reit_count'])
+            except (ValueError, TypeError):
+                continue
+            if b > 0 and a < b * 0.8:
+                worse.append((s_, b, a))
+        if worse:
+            print(f"  [警告] 事例件数が2割以上減った駅 {len(worse)}件: "
+                  + ', '.join(f'{s_}({b}->{a})' for s_, b, a in sorted(worse)[:8]))
+    else:
+        print("\n[前回との差分] 旧 reit_by_station.csv が無いため比較なし")
     # サンプル: 千代田区の数駅で近接が効いているか
     for r in out_rows:
         if r['station'] in ('大手町駅', '麹町駅', '市ケ谷駅'):
