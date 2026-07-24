@@ -31,14 +31,23 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from reit_parser import parse_property_tables, fetch_honbun_htmls, merge_property_maps
 
-FIELDS = ['reit_name', 'edinet_code', 'doc_id', 'period', 'property_name', 'use_type',
+FIELDS = ['reit_name', 'edinet_code', 'doc_id', 'period', 'property_name',
+          # 用途: use_type は正規化後(7分類)、use_type_raw は有報の原文。
+          # asset_type は「資産の種類」(不動産信託受益権 等)で用途ではない。
+          # 原文を残すのは、正規化が正しいか後から検証できるようにするため。
+          'use_type', 'use_type_raw', 'asset_type',
+          # 取得年月日: 保有期間・年率換算(CAGR)の算出に必要。
+          # precision は 'day'(日まで判明) / 'month'(月初で補完) の別。
+          'acquisition_date', 'acquisition_date_raw', 'acquisition_date_precision',
           'acquisition_price', 'book_value', 'appraisal_value', 'cap_rate', 'appraiser',
           'location', 'region', 'land_area', 'gross_floor_area', 'leasable_area', 'leased_area',
           'occupancy', 'tenant_count', 'investment_ratio', 'rental_income',
           'discount_rate', 'terminal_cap']
 
+# レポートで充足率を見る項目。use_type と acquisition_date を追加しないと
+# 2026-07 のパーサー修正が効いたかどうかをレポートで確認できない。
 CHECK_FIELDS = ['acquisition_price', 'appraisal_value', 'cap_rate', 'appraiser',
-                'location', 'occupancy']
+                'location', 'occupancy', 'use_type', 'acquisition_date']
 
 
 def main():
@@ -79,6 +88,7 @@ def main():
 
     all_rows = []
     report = []
+    dropped_keys = set()   # FIELDS に無いためCSVに出せなかった項目
     for i, r in enumerate(targets, 1):
         name = r['REIT名(サイト表記)']
         doc_id = r['最新docID']
@@ -109,7 +119,8 @@ def main():
             c = sum(1 for rec in merged.values() if f in rec)
             cov[f] = f"{100*c//n}%" if n else '0%'
         status = 'OK' if n > 0 else 'NO_PROPERTIES'
-        print(f"{n}物件  cap_rate {cov.get('cap_rate')}  鑑定評価額 {cov.get('appraisal_value')}")
+        print(f"{n}物件  取得価格 {cov.get('acquisition_price')}  鑑定評価額 {cov.get('appraisal_value')}"
+              f"  用途 {cov.get('use_type')}  取得日 {cov.get('acquisition_date')}")
 
         for rec in merged.values():
             row = {f: '' for f in FIELDS}
@@ -117,6 +128,11 @@ def main():
             for k, v in rec.items():
                 if k in row:
                     row[k] = v
+                else:
+                    # パーサーが返したのに FIELDS に無い項目は「黙って消える」。
+                    # 実際に use_type_raw 等を追加した際にこれで事故る構造だったので、
+                    # 気づけるように一度だけ警告する(出力されなければ存在しないのと同じ)。
+                    dropped_keys.add(k)
             all_rows.append(row)
 
         report.append({'reit_name': name, 'doc_id': doc_id, 'status': status,
@@ -133,6 +149,11 @@ def main():
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
         w.writerows(report)
+
+    if dropped_keys:
+        print(f"\n[警告] パーサーは返したが FIELDS に無いためCSVに出力されなかった項目: "
+              f"{sorted(dropped_keys)}")
+        print("       必要なら FIELDS に追加してください。")
 
     print(f"\n完了: {len(all_rows)}物件 -> {args.out}")
     print(f"      法人別レポート -> {args.report}")
