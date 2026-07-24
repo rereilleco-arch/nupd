@@ -61,11 +61,19 @@ from bs4 import BeautifulSoup
 def table_to_matrix(table):
     """rowspan/colspan を展開して 2次元リストにする。
     (先頭列が rowspan で省略される表が多いため、これをやらないと列がずれる)"""
-    rows = table.find_all('tr')
+    # BeautifulSoup の find_all は再帰的なので、<td>の中に<table>が入れ子に
+    # なっている表では内側の tr/td まで拾ってしまう。
+    # そうなると「外側セルのテキスト(内側セルの連結値)」と「内側セルの個別値」が
+    # 同じ行に並び、以降の列が丸ごとずれる。
+    # (森ヒルズリートの物件表で確認: 'O-0プレミアム','O-0','プレミアム' が連続し
+    #  物件名称の列に所在地が入り、37行中4行しか物件として通らなかった)
+    # 直系の tr / td だけを見る。
+    rows = [tr for tr in table.find_all('tr') if tr.find_parent('table') is table]
     grid = {}
     for ri, tr in enumerate(rows):
         ci = 0
-        for cell in tr.find_all(['td', 'th']):
+        cells = [c for c in tr.find_all(['td', 'th']) if c.find_parent('table') is table]
+        for cell in cells:
             while (ri, ci) in grid:      # 既に上の行の rowspan で埋まっている
                 ci += 1
             text = cell.get_text(strip=True).replace('\u3000', '').replace('\xa0', '')
