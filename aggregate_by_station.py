@@ -350,6 +350,11 @@ def main():
         seen = set()
         keep_pool = pool if args.limit <= 0 else pool[:args.limit]
         for name_rank, mdist, _, mu, p in keep_pool:
+            # 駅ページの事例はNOI利回り(cap)がある物件のみ。近さ順5件に「—」が
+            # 混じると利回り事例として機能しない(5件中3件が—になる駅もある)ため。
+            # 区の件数(reit_count)・cap中央値は全物件ベースのまま(母数は偽らない)。
+            if p['_cap'] is None:
+                continue
             key = (p.get('property_name', ''), p.get('reit_name', ''))
             if key in seen:
                 continue
