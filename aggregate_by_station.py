@@ -180,6 +180,15 @@ def load_neighbors(path):
     return out
 
 
+def _norm_pname(s):
+    """物件名の表記ゆれを吸収するキー。スペース除去＋英数字を半角化。
+    有報とREIT公式で「みなとみらい オーシャンタワー / みなとみらいオーシャンタワー」
+    「早稲田ＤＥＵＸ / 早稲田DEUX」のように空白と全半角が食い違うため。"""
+    import unicodedata
+    s = unicodedata.normalize('NFKC', str(s or ''))
+    return re.sub(r'[\s\u3000]+', '', s)
+
+
 def load_location_master(path):
     """reit_locations.csv(公式サイト由来の恒久データ)を読む。
 
@@ -191,7 +200,10 @@ def load_location_master(path):
     try:
         with open(path, encoding='utf-8-sig') as f:
             for r in csv.DictReader(f):
-                out[(r['reit_name'], r['property_name'])] = r['location']
+                loc = r['location']
+                out[(r['reit_name'], r['property_name'])] = loc
+                # 表記ゆれ吸収用の別キーも張る(完全一致を優先するため後で引く)
+                out.setdefault((r['reit_name'], _norm_pname(r['property_name']) + '\x00norm'), loc)
     except FileNotFoundError:
         pass
     return out
@@ -237,7 +249,10 @@ def main():
         if (r.get('location') or '').strip():
             r['location_source'] = '有報'
             continue
-        loc = locmaster.get((r.get('reit_name', ''), r.get('property_name', '')))
+        rn = r.get('reit_name', '')
+        loc = locmaster.get((rn, r.get('property_name', '')))
+        if not loc:
+            loc = locmaster.get((rn, _norm_pname(r.get('property_name', '')) + '\x00norm'))
         if loc:
             r['location'] = loc
             r['location_source'] = 'REIT公式'
