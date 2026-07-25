@@ -142,15 +142,20 @@ def build(df1, df2, out_path, period_label='', source_label='', updated=''):
     d1['eff_far']=[eff_far(a,b,z) for a,b,z in zip(d1['far_designated'],d1['breadth'],zoning)]
     d1['isshu']=np.where((d1['atype']=='land')&d1['tsubo'].notna()&d1['eff_far'].notna()&(d1['eff_far']>0),
                          d1['tsubo']/(d1['eff_far']/100.0), np.nan)
-    # 指定容積率100%の土地は一種単価から除外する。
-    # 一種単価＝坪単価÷容積率 なので、容積率100%だと一種単価＝坪単価となり、
-    # 「容積を加味した比較指標」としての意味を持たない。しかも割り引かれないぶん
-    # 低容積率の土地ほど高く出て、一種単価ランキングの上位を占めてしまう
-    # (指定100%は96%が一種・二種低層＝戸建てエリアで、一種単価の対象外)。
-    # 判定は指定容積率(far_designated)で行う。実効容積率(eff_far)で判定すると、
-    # 指定150%でも前面道路制限で実効100%になった土地まで巻き込むため。
-    # 計算そのものは従来どおり実効容積率で行い(実勢に近い)、除外だけ指定で行う。
-    d1['isshu']=np.where(d1['far_designated']==100, np.nan, d1['isshu'])
+    # 一種単価の「計算値」isshu は、指定容積率100%の取引でも欠損させない。
+    # 100%なら一種単価＝坪単価(÷1.0)であり、それは正しい計算結果だからである。
+    # 土地価格ページの事例テーブルでは、この値をそのまま表示する(—にしない)。
+    #
+    # 一方、一種単価の「集計」(平均・中央値・件数)と「一種単価ページの事例」からは
+    # 指定容積率100%を除外する。理由:
+    #   一種単価＝坪単価÷容積率 なので、100%だと坪単価と同値になり「容積を加味した
+    #   比較指標」として機能しない。しかも割り引かれないぶん低容積率の土地ほど高く
+    #   出て、一種単価ランキングの上位を汚染する(100%は96%が低層住専=戸建て)。
+    # 判定は指定容積率(far_designated)。実効容積率だと、指定150%でも前面道路制限で
+    # 実効100%になった都心の狭小地まで巻き込むため(それは残すべき実態)。
+    #
+    # そこで集計専用の isshu_agg を別に持つ(100%を除外)。計算値 isshu は無傷。
+    d1['isshu_agg']=np.where(d1['far_designated']==100, np.nan, d1['isshu'])
 
     d2=d2.copy(); d2['atype']='mansion'
     d2['unit_tsubo']=np.where(d2['area']>0, d2['price']/(d2['area']/TSUBO), np.nan)
@@ -170,10 +175,12 @@ def build(df1, df2, out_path, period_label='', source_label='', updated=''):
             r[f'{pre}_dist_median']=int(round(g['distmin'].median())) if g['distmin'].notna().any() else ''
             if atype=='land':
                 r['land_area_median']=int(round(g['area'].median())) if g['area'].notna().any() else ''
-                ish=g['isshu'].dropna()
+                # 集計は isshu_agg(指定容積率100%を除外した値)で行う。
+                ish=g['isshu_agg'].dropna()
                 r['land_isshu_median']=int(round(ish.median())) if len(ish) else ''
                 r['land_isshu_mean']=int(round(ish.mean())) if len(ish) else ''
-                # 一種単価の算出母数(容積率が取れた取引のみ)。土地の取引件数とは異なる。
+                # 一種単価の算出母数 = 容積率が取れ、かつ指定容積率100%を除いた取引数。
+                # 土地の取引件数(land_count)とも、事例JSONの全行数とも異なる。
                 r['land_isshu_count']=int(len(ish))
                 # 注: 一種単価は外れ値除外(trimmean)を行わない。価格・坪単価の外れ値は
                 # 入力誤りや特殊事情の取引であることが多い一方、一種単価のばらつきは
