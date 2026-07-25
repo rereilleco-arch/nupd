@@ -683,6 +683,30 @@ def parse_property_tables(html):
         if hit:
             tables_used.append((ti, sorted(mapping.keys()), hit, 'merge'))
 
+    # 3) 縦型「1物件=1テーブル」形式からの補完。
+    #    いちご等は取得価格・取得年月日を横組み一覧に載せず、物件個別の縦テーブルに書く。
+    #    横組みで母集団は取れているので、欠けている項目(主に取得価格)だけを埋める。
+    #    名寄せは完全一致→スペース/全半角無視の順(有報内でも表記が揺れるため)。
+    vert = collect_vertical_properties(html)
+    if vert:
+        import unicodedata
+        def _nk(s):
+            return re.sub(r'[\s\u3000]+', '', unicodedata.normalize('NFKC', str(s or '')))
+        norm_index = { _nk(n): n for n in merged }
+        vfilled = 0
+        for vname, vrec in vert.items():
+            target = vname if vname in merged else norm_index.get(_nk(vname))
+            if not target:
+                continue
+            for k, v in vrec.items():
+                if k == 'property_name':
+                    continue
+                if k not in merged[target] or merged[target][k] in ('', None):
+                    merged[target][k] = v
+                    vfilled += 1
+        if vfilled:
+            tables_used.append(('vertical', ['acquisition_price', 'acquisition_date'], vfilled, 'vertical'))
+
     # 事後フィルタ: 海外物件を除外し、金額が非現実的な物件は該当項目を落とす
     cleaned = {}
     for name, rec in merged.items():
@@ -754,3 +778,122 @@ def merge_property_maps(maps):
                 if base.get(k) is None or base.get(k) == '':
                     base[k] = v               # 欠けている項目だけ補完
     return merged
+
+
+# ============================================================================
+# 縦型「1物件=1テーブル」形式への対応
+# ----------------------------------------------------------------------------
+# いちごオフィス等は、物件個別ページを縦組みの小テーブルで書く:
+#     行: [特定資産の種類, 不動産信託受益権]
+#     行: [取得価格,       3,254百万円]
+#     行: [取得年月日,     2011年11月１日]
+# これは横組みの物件表ではないため is_property_table を通らず、取得価格が
+# 丸ごと欠落していた(いちご86件/東急28件/ヘルスケア&メディカル69件で0%)。
+#
+# 各小テーブルには物件名が入っていないことが多く、直前の見出し(通常は
+# 「[いちご西参道ビル]」のような帯、または直近の物件名テキスト)から取る。
+# 取れた (物件名, 取得価格, 取得年月日) を横組み一覧表の母集団にマージする。
+
+_VERT_LABELS = {
+    'acquisition_price': re.compile(r'^取得価格|^取得価額|^投資額'),
+    'acquisition_date':  re.compile(r'^取得年月日|^取得日'),
+    'appraisal_value':   re.compile(r'^(期末)?鑑定評価額|^期末算定価額'),
+    'book_value':        re.compile(r'^(期末)?帳簿価額|^帳簿価額'),
+    'location':          re.compile(r'^所在地|^所在'),
+}
+# この形式を「物件個別テーブル」と判断する最低条件: 取得価格の行がある
+_VERT_REQUIRED = 'acquisition_price'
+
+
+def _looks_vertical(matrix):
+    """先頭列が項目名・2列目が値、という縦組みの物件テーブルか判定。
+    取得価格の行を持つものだけを対象にする(集計表や手数料表を除くため)。"""
+    if len(matrix) < 3:
+        return False
+    labels = [str(row[0]).strip() if row else '' for row in matrix]
+    if not any(_VERT_LABELS[_VERT_REQUIRED].search(lb) for lb in labels):
+        return False
+    # 「取得価格」ラベル行の2列目が金額らしいこと
+    for row in matrix:
+        if row and _VERT_LABELS['acquisition_price'].search(str(row[0])):
+            val = row[1] if len(row) > 1 else ''
+            if re.search(r'[\d,]{3,}\s*(百万円|千円|円|億円)', str(val)):
+                return True
+    return False
+
+
+def _read_vertical(matrix):
+    """縦組みテーブルから項目を1件ぶん読む。物件名は入っていれば拾う。"""
+    rec = {}
+    name = None
+    for row in matrix:
+        if not row:
+            continue
+        label = str(row[0]).strip()
+        value = str(row[1]).strip() if len(row) > 1 else ''
+        # 物件名ラベル
+        if re.search(r'物件名|名称|物件の名称', label) and value:
+            name = clean_name(value)
+            continue
+        for key, rx in _VERT_LABELS.items():
+            if rx.search(label) and value:
+                if key in ('acquisition_price', 'appraisal_value', 'book_value'):
+                    scale = detect_unit_scale(value) or (
+                        0.001 if '千円' in value else
+                        100.0 if '億円' in value else
+                        1.0 if '百万円' in value else None)
+                    num = to_num(value)
+                    if num is not None and scale is not None:
+                        rec[key] = round(num * scale, 3)
+                elif key == 'acquisition_date':
+                    iso, prec = to_date(value)
+                    if iso:
+                        rec['acquisition_date'] = iso
+                        rec['acquisition_date_raw'] = value
+                        rec['acquisition_date_precision'] = prec
+                else:
+                    rec[key] = clean_name(value)
+                break
+    return name, rec
+
+
+def _heading_before(table):
+    """縦テーブルの直前にある物件名の見出しを探す。
+    「[いちご西参道ビル]」「(1) いちご三田ビル」等の帯を想定。"""
+    node = table
+    for _ in range(6):
+        node = node.find_previous_sibling() if node else None
+        if node is None:
+            break
+        text = node.get_text(strip=True) if hasattr(node, 'get_text') else str(node).strip()
+        if not text or len(text) > 60:
+            continue
+        # 角括弧で囲まれた物件名 or 末尾が「ビル/タワー/レジデンス」等
+        m = re.search(r'[\[［]([^\]］]{3,40})[\]］]', text)
+        if m:
+            return clean_name(m.group(1))
+        if re.search(r'(ビル|タワー|レジデンス|ハウス|プラザ|センター|スクエア|パーク|ヒルズ|マンション)\s*$', text):
+            return clean_name(re.sub(r'^[\(（]?[\d０-９]+[\)）]?\s*', '', text))
+    return None
+
+
+def collect_vertical_properties(html):
+    """縦型テーブルから {物件名: {取得価格, 取得年月日, ...}} を返す。
+    横組み一覧が母集団を持つ前提で、取得価格等の欠落を補完する用途。"""
+    soup = BeautifulSoup(html, 'lxml')
+    out = {}
+    for table in soup.find_all('table'):
+        matrix = table_to_matrix(table)
+        if not _looks_vertical(matrix):
+            continue
+        name, rec = _read_vertical(matrix)
+        if not rec:
+            continue
+        if not name:
+            name = _heading_before(table)
+        if not name:
+            continue
+        tgt = out.setdefault(name, {'property_name': name})
+        for k, v in rec.items():
+            tgt.setdefault(k, v)
+    return out
