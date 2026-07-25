@@ -112,6 +112,10 @@ def _examples(g, atype, n=None):
             e['一種単価']=jval(r['isshu']) if pd.notna(r['isshu']) else None
             e['実効容積率']=jval(r['eff_far']) if pd.notna(r['eff_far']) else None
             e['指定容積率']=jval(r['far_designated']) if pd.notna(r['far_designated']) else None
+            # 前面道路幅員。実効容積率が指定容積率より低い理由(道路が狭い等)を
+            # 読者が表の上で確かめられるようにする。一種単価が坪単価と同値になる
+            # (実効100%)取引でも、前面道路を見れば「道路制限による」と分かる。
+            e['前面道路m']=(round(float(r['breadth']),1) if pd.notna(r.get('breadth')) else None)
         elif atype=='house':
             e['延床坪単価']=jval(r['floor_tsubo']); e['延床m2']=jval(r['floor'])
             e['土地m2']=jval(r['area']); e['築年']=jval(r['built'])
@@ -138,6 +142,15 @@ def build(df1, df2, out_path, period_label='', source_label='', updated=''):
     d1['eff_far']=[eff_far(a,b,z) for a,b,z in zip(d1['far_designated'],d1['breadth'],zoning)]
     d1['isshu']=np.where((d1['atype']=='land')&d1['tsubo'].notna()&d1['eff_far'].notna()&(d1['eff_far']>0),
                          d1['tsubo']/(d1['eff_far']/100.0), np.nan)
+    # 指定容積率100%の土地は一種単価から除外する。
+    # 一種単価＝坪単価÷容積率 なので、容積率100%だと一種単価＝坪単価となり、
+    # 「容積を加味した比較指標」としての意味を持たない。しかも割り引かれないぶん
+    # 低容積率の土地ほど高く出て、一種単価ランキングの上位を占めてしまう
+    # (指定100%は96%が一種・二種低層＝戸建てエリアで、一種単価の対象外)。
+    # 判定は指定容積率(far_designated)で行う。実効容積率(eff_far)で判定すると、
+    # 指定150%でも前面道路制限で実効100%になった土地まで巻き込むため。
+    # 計算そのものは従来どおり実効容積率で行い(実勢に近い)、除外だけ指定で行う。
+    d1['isshu']=np.where(d1['far_designated']==100, np.nan, d1['isshu'])
 
     d2=d2.copy(); d2['atype']='mansion'
     d2['unit_tsubo']=np.where(d2['area']>0, d2['price']/(d2['area']/TSUBO), np.nan)
