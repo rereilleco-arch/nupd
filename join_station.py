@@ -3,6 +3,14 @@
 無償ソースのみ: Geolonia japanese-addresses(町丁目座標) / OSM(駅座標)。"""
 import json, csv, re, unicodedata, math, os
 HERE=os.path.dirname(os.path.abspath(__file__))
+# 入出力の置き場所。GitHub Actions ではリポジトリのルートを指す。
+#   ローカル : 未設定なら従来どおり _pipeline の親（4-データ/マンション名寄せ）
+#   Actions  : NOITAS_DIR=. を渡してリポジトリ直下を使う
+def _dir(name, default):
+    return os.environ.get(name, default)
+WORK   = _dir('NOITAS_DIR',   os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ASSETS = _dir('NOITAS_ASSETS', os.path.dirname(os.path.abspath(__file__)))
+
 
 KAN='〇一二三四五六七八九'
 def kan2num(t):
@@ -37,14 +45,16 @@ def hav(a, b):
     return 2*R*math.asin(math.sqrt(h))
 
 choume={}
-for k,(lat,lng,city,town) in json.load(open(os.path.join(HERE,'choume.json'))).items():
+for k,(lat,lng,city,town) in json.load(open(os.path.join(ASSETS,'choume.json'))).items():
     choume[(city, norm_town(town))]=(lat,lng)
-stc={k:(v[0],v[1]) for k,v in json.load(open(os.path.join(HERE,'stcoord.json'))).items()}
+stc={k:(v[0],v[1]) for k,v in json.load(open(os.path.join(ASSETS,'stcoord.json'))).items()}
 
 # 相場を語れる駅（n>=10）だけを対象にする
-N=os.path.expanduser('~/NOITAS/4-データ/')
+# station_prices.csv の場所。Actions では output/ に生成される
+PRICES=os.environ.get('NOITAS_PRICES') or os.path.join(
+    os.path.expanduser('~/NOITAS/4-データ'),'NOITAS基本データ','csv','station_prices.csv')
 target={}
-for r in csv.DictReader(open(N+'NOITAS基本データ/csv/station_prices.csv')):
+for r in csv.DictReader(open(PRICES)):
     c=r['mansion_count'].strip()
     if c.isdigit() and int(c)>=10:
         target[r['station'].replace('駅','')]=int(c)
@@ -85,7 +95,7 @@ def run(src, path, name_col, addr_col, extra):
         out.append(rec)
     return out, len(rows), ng
 
-M=N+'マンション名寄せ/'
+M=WORK+os.sep
 res=[]
 a,t1,n1=run('建築物環境計画書', M+'seed_kankyokeikakusho.csv','名称','所在地',
             {'用途':'用途','延べ面積㎡':'延べ面積㎡','地上階':'地上階','構造':'構造','竣工年月':'竣工年月','建築主':'建築主'})
