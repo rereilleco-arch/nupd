@@ -1,10 +1,22 @@
 name: quarterly-data-update
+
+# 既存(MLIT集計・FUDOSAN・EDINET/REIT)はそのまま。
+# 追加したのは「価格推移」「徒歩圏人口」「棟データ」の3ステップと、冒頭の env。
+# env の3行が、スクリプトの入出力をリポジトリ直下に向けている。
+
 on:
   schedule:
     - cron: '0 0 5 1,4,7,10 *'
   workflow_dispatch: {}
+
 permissions:
   contents: write
+
+env:
+  NOITAS_DIR: .                        # 中間CSVの置き場所＝リポジトリ直下
+  NOITAS_ASSETS: .                     # choume.json / stcoord.json の置き場所
+  NOITAS_PRICES: output/station_prices.csv
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,10 +25,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install deps
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt pypdf   # pypdf は棟別PDFの種別抽出に使う
+
       - name: Build station_prices.csv from input CSVs
         run: python3 run_pipeline.py
+
       - name: Enrich with FUDOSAN DB
         env:
           FUDOSANDB_API_KEY: ${{ secrets.FUDOSANDB_API_KEY }}
@@ -25,6 +40,7 @@ jobs:
             --master input/tokyost_1.csv \
             --prices output/station_prices.csv \
             --out output/fudosan_enrichment.csv
+
       - name: Fetch & parse REIT filings from EDINET
         env:
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
@@ -33,11 +49,45 @@ jobs:
           python3 run_reits.py --out output/reit_properties.csv --report output/reit_parse_report.csv
           python3 aggregate_by_station.py --in output/reit_properties.csv --stations input/tokyost_1.csv --neighbors station_neighbors.csv --out output/reit_by_station.csv
           python3 aggregate_by_company.py --in output/reit_properties.csv --names reit_names.json --out output/reit_by_company.csv
+
+      # ===== 追加1: 市区町村の中古マンション価格推移(2005Q3〜) =====
+      - name: Municipal price trends
+        env:
+          FUDOSANDB_API_KEY: ${{ secrets.FUDOSANDB_API_KEY }}
+        run: python3 price_trends_update.py --out output/muni_price_trends.csv
+
+      # ===== 追加2: 徒歩圏の居住人口 =====
+      # 町丁別人口(東京都総務局・CC BY)は未取得なら自動ダウンロードする
+      - name: Station catchment population
+        run: |
+          python3 station_population.py \
+            --coords input/station_coords.csv \
+            --out output/station_population.csv
+
+      # ===== 追加3: 棟データ =====
+      # とどまる登録簿・中央区認定はHTMLから自動取得。
+      # 建築物環境計画書だけは input/kankyo に手で置く(APIも一括DLも無い・年1回)。
+      - name: Restore todomaru PDF cache
+        uses: actions/cache@v4
+        with:
+          path: pdfs
+          key: todomaru-pdfs-v1
+
+      - name: Mansion seeds
+        run: python3 mansion_update.py --kankyo input/kankyo --pdf-cache pdfs --out-dir .
+
+      - name: Mansion master
+        run: |
+          python3 join_station.py
+          python3 normalize.py
+          python3 build_plugin_data.py
+          cp _dist/mansions.csv output/mansions.csv
+
       - name: Commit outputs
         run: |
           git config user.name  "noitas-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json
+          git add output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json output/muni_price_trends.csv output/station_population.csv output/mansions.csv
           git commit -m "chore: quarterly data update" || echo "no changes"
           git pull --rebase --autostash origin main || true
           git push
