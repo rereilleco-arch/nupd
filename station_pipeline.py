@@ -7,18 +7,11 @@ file1相当(土地/土地建物)と file2相当(中古マンション等)を渡�
 import pandas as pd, numpy as np, json, re
 
 TSUBO = 3.305785
+QORDER = {'2025年第1四半期':1,'2025年第2四半期':2,'2025年第3四半期':3,'2025年第4四半期':4}
+# 四半期表記は年に依存しないようパターンでも解釈
 def qorder(period):
-    """取引時期を並べ替え可能な数値にする。「2025年第4四半期」→ 20254。
-
-    以前は四半期番号(1〜4)だけを見ていたため、複数年のデータを読み込むと
-    2024年第4四半期が2025年第1四半期より新しいと判定される不具合があった。
-    年を含めることで、過去データを積み上げても正しく新しい順に並ぶ。
-    """
     if pd.isna(period): return 0
-    s = str(period)
-    m = re.search(r'(\d{4})\s*年.*?第([1-4])四半期', s)
-    if m: return int(m.group(1)) * 10 + int(m.group(2))
-    m = re.search(r'第([1-4])四半期', s)     # 年が無い表記へのフォールバック
+    m = re.search(r'第([1-4])四半期', str(period))
     return int(m.group(1)) if m else 0
 BAD = ['調停・競売等', '関係者間取引', '瑕疵有りの可能性', 'その他事情有り']
 
@@ -77,49 +70,105 @@ def _normalize(d):
     return d
 
 def _near_complete_sort(g, cm):
-    """事例の並び順。取引時期の新しい順を第一とし、同一時期内では
-    情報が揃っている(面積・築年あり、駅から近い)ものを先に出す。
-
-    以前は完全性を最優先していたため、古い取引が新しい取引より上に来ることがあり、
-    「直近◯件」という説明と実際の並びが食い違っていた。
-    表示側で「取引時期の新しい順」と明記するため、時期を主キーにする。
-    """
     g=g.copy(); g['_c']=cm; g['_q']=g['取引時期'].map(qorder)
     g['_d']=g['distmin'].fillna(999); g['_n']=g['distmin'].notna() & (g['distmin']<=20)
     g['_qual']=g['_c'] & g['_n']
-    return g.sort_values(['_q','_qual','_n','_c','_d'], ascending=[False,False,False,False,True])
+    return g.sort_values(['_qual','_n','_c','_q','_d'], ascending=[False,False,False,False,True])
 
 def _ex_dist(r):
     if pd.notna(r['distmin']): return jval(r['distmin'])
     return r['dist_raw'] if isinstance(r['dist_raw'],str) else None
 
-def _examples(g, atype, n=None):
-    """駅ごとの取引事例をJSONで返す。n=None で全件(既定)。
 
-    以前は上限30件だったが、取引の多い駅で「残りはどこ?」となる不自然さがあり、
-    データを持っているのに出さない機会損失でもあったため撤廃した。
-    表示件数の制御は表示側(駅ページ5件/個別ページ全件)で行う。
+# ---- 内訳のJSON列。全件から集計する（事例30件の抜粋ではない） ----
+def _bucket_stats(g, valcol, keyfn, order=None):
+    """keyfnでグループ化し、中央値・レンジ・件数を返す。外れ値はTukeyで除く。"""
+    out = {}
+    for _, r in g.iterrows():
+        k = keyfn(r)
+        v = r.get(valcol)
+        if k is None or pd.isna(v) or v <= 0:
+            continue
+        out.setdefault(k, []).append(float(v))
+    res = []
+    for k, v in out.items():
+        s = pd.Series(v)
+        if len(s) >= 4:
+            q1, q3 = s.quantile(0.25), s.quantile(0.75)
+            iqr = q3 - q1
+            if iqr > 0:
+                s = s[(s >= q1 - 1.5*iqr) & (s <= q3 + 1.5*iqr)]
+        if not len(s):
+            continue
+        res.append({'k': k, 'n': int(len(s)),
+                    'median': jval(s.median()), 'min': jval(s.min()), 'max': jval(s.max())})
+    if order:
+        res.sort(key=lambda d: order.index(d['k']) if d['k'] in order else 999)
+    else:
+        res.sort(key=lambda d: d['k'], reverse=True)
+    return json.dumps(res, ensure_ascii=False)
+
+def _era(r):
+    b = r.get('built')
+    return None if pd.isna(b) else int(b // 10 * 10)
+
+def _distband(r):
+    d = r.get('distmin')
+    if pd.isna(d): return None
+    return '5分以内' if d <= 5 else ('6〜10分' if d <= 10 else '11分以上')
+DISTBANDS = ['5分以内', '6〜10分', '11分以上']
+
+def _areaband(r):
+    a = r.get('area')
+    if pd.isna(a) or a <= 0: return None
+    return '40㎡未満' if a < 40 else ('40〜60㎡' if a < 60 else ('60〜80㎡' if a < 80 else '80㎡以上'))
+AREABANDS = ['40㎡未満', '40〜60㎡', '60〜80㎡', '80㎡以上']
+
+def _useband(r):
+    """土地建物を用途で分ける。
+
+    不動産情報ライブラリの注記より
+      「成約価格情報の場合、『土地と建物』とは『戸建て』を指します」
+    つまり成約価格情報の行は用途欄が空でも戸建て確定。欠損ではなく、
+    戸建てしか収録しないため記載する必要がないという設計。
+    実測でも 成約価格情報(価格0.50億・土地100㎡・木造93%) と
+    不動産取引価格情報の用途=住宅(0.53億・100㎡・木造92%) が一致する。
+
+    これにより分類可能率は 47% → 95.2%。
+      一戸建て 86.1% / 1棟(共同住宅) 9.1% / 用途未公表 2.8% / 対象外 2.0%
     """
+    k = r.get('kubun')
+    k = '' if (k is None or (isinstance(k, float) and pd.isna(k))) else str(k)
+    if '成約' in k:
+        return '一戸建て'
+    u = r.get('用途')
+    u = '' if (u is None or (isinstance(u, float) and pd.isna(u))) else str(u).strip()
+    if u == '':
+        return '用途未公表'
+    if '共同住宅' in u:
+        return '1棟(共同住宅)'
+    if u == '住宅' or u.startswith('住宅、'):
+        return '一戸建て'
+    return None
+USEBANDS = ['一戸建て', '1棟(共同住宅)', '用途未公表']
+
+def _examples(g, atype, n=30):
     if atype=='land':    cm=g['tsubo'].notna() & g['area'].notna()
     elif atype=='house': cm=g['floor'].notna() & g['built'].notna()
     else:                cm=g['area'].notna() & g['built'].notna()
     gg=_near_complete_sort(g,cm); out=[]
-    if n is not None: gg=gg.head(n)
-    for _,r in gg.iterrows():
+    for _,r in gg.head(n).iterrows():
         e={'価格':jval(r['price']),'時期':r['取引時期'],'区分':r['kubun'],'距離分':_ex_dist(r)}
         if atype=='land':
             e['坪単価']=jval(r['tsubo']); e['面積m2']=jval(r['area'])
             e['一種単価']=jval(r['isshu']) if pd.notna(r['isshu']) else None
             e['実効容積率']=jval(r['eff_far']) if pd.notna(r['eff_far']) else None
             e['指定容積率']=jval(r['far_designated']) if pd.notna(r['far_designated']) else None
-            # 前面道路幅員。実効容積率が指定容積率より低い理由(道路が狭い等)を
-            # 読者が表の上で確かめられるようにする。一種単価が坪単価と同値になる
-            # (実効100%)取引でも、前面道路を見れば「道路制限による」と分かる。
-            e['前面道路m']=(round(float(r['breadth']),1) if pd.notna(r.get('breadth')) else None)
         elif atype=='house':
             e['延床坪単価']=jval(r['floor_tsubo']); e['延床m2']=jval(r['floor'])
             e['土地m2']=jval(r['area']); e['築年']=jval(r['built'])
             e['構造']=r['建物の構造'] if pd.notna(r['建物の構造']) else None
+            e['用途']=r['用途'] if pd.notna(r.get('用途')) else None
         else:
             e['専有坪単価']=jval(r['unit_tsubo']); e['専有m2']=jval(r['area'])
             e['間取り']=r['間取り'] if pd.notna(r.get('間取り')) else None
@@ -142,20 +191,6 @@ def build(df1, df2, out_path, period_label='', source_label='', updated=''):
     d1['eff_far']=[eff_far(a,b,z) for a,b,z in zip(d1['far_designated'],d1['breadth'],zoning)]
     d1['isshu']=np.where((d1['atype']=='land')&d1['tsubo'].notna()&d1['eff_far'].notna()&(d1['eff_far']>0),
                          d1['tsubo']/(d1['eff_far']/100.0), np.nan)
-    # 一種単価の「計算値」isshu は、指定容積率100%の取引でも欠損させない。
-    # 100%なら一種単価＝坪単価(÷1.0)であり、それは正しい計算結果だからである。
-    # 土地価格ページの事例テーブルでは、この値をそのまま表示する(—にしない)。
-    #
-    # 一方、一種単価の「集計」(平均・中央値・件数)と「一種単価ページの事例」からは
-    # 指定容積率100%を除外する。理由:
-    #   一種単価＝坪単価÷容積率 なので、100%だと坪単価と同値になり「容積を加味した
-    #   比較指標」として機能しない。しかも割り引かれないぶん低容積率の土地ほど高く
-    #   出て、一種単価ランキングの上位を汚染する(100%は96%が低層住専=戸建て)。
-    # 判定は指定容積率(far_designated)。実効容積率だと、指定150%でも前面道路制限で
-    # 実効100%になった都心の狭小地まで巻き込むため(それは残すべき実態)。
-    #
-    # そこで集計専用の isshu_agg を別に持つ(100%を除外)。計算値 isshu は無傷。
-    d1['isshu_agg']=np.where(d1['far_designated']==100, np.nan, d1['isshu'])
 
     d2=d2.copy(); d2['atype']='mansion'
     d2['unit_tsubo']=np.where(d2['area']>0, d2['price']/(d2['area']/TSUBO), np.nan)
@@ -175,17 +210,9 @@ def build(df1, df2, out_path, period_label='', source_label='', updated=''):
             r[f'{pre}_dist_median']=int(round(g['distmin'].median())) if g['distmin'].notna().any() else ''
             if atype=='land':
                 r['land_area_median']=int(round(g['area'].median())) if g['area'].notna().any() else ''
-                # 集計は isshu_agg(指定容積率100%を除外した値)で行う。
-                ish=g['isshu_agg'].dropna()
+                ish=g['isshu'].dropna()
                 r['land_isshu_median']=int(round(ish.median())) if len(ish) else ''
                 r['land_isshu_mean']=int(round(ish.mean())) if len(ish) else ''
-                # 一種単価の算出母数 = 容積率が取れ、かつ指定容積率100%を除いた取引数。
-                # 土地の取引件数(land_count)とも、事例JSONの全行数とも異なる。
-                r['land_isshu_count']=int(len(ish))
-                # 注: 一種単価は外れ値除外(trimmean)を行わない。価格・坪単価の外れ値は
-                # 入力誤りや特殊事情の取引であることが多い一方、一種単価のばらつきは
-                # 用途地域・容積率の違いという実態を反映しており、除外すると市場の幅を
-                # 削って実勢より低く見せてしまうため(表示側の注記でもその旨を明示)。
             elif atype=='house':
                 r['house_floor_median']=int(round(g['floor'].median())) if g['floor'].notna().any() else ''
                 r['house_land_median']=int(round(g['area'].median())) if g['area'].notna().any() else ''
@@ -195,6 +222,13 @@ def build(df1, df2, out_path, period_label='', source_label='', updated=''):
                 r['mansion_area_mean']=int(round(g['area'].mean())) if g['area'].notna().any() else ''
                 r['mansion_built_median']=int(round(g['built'].median())) if g['built'].notna().any() else ''
             r[f'{pre}_examples']=_examples(g, atype)
+            # 内訳は全件から集計する（事例30件の抜粋ではない）
+            if atype=='mansion':
+                r['mansion_by_era'] =_bucket_stats(g,'unit_tsubo',_era)
+                r['mansion_by_dist']=_bucket_stats(g,'unit_tsubo',_distband,DISTBANDS)
+                r['mansion_by_area']=_bucket_stats(g,'price',_areaband,AREABANDS)
+            elif atype=='house':
+                r['house_by_use']   =_bucket_stats(g,'price',_useband,USEBANDS)
         return len(w)
 
     n=[agg(d1,'land'), agg(d1,'house'), agg(d2,'mansion')]
