@@ -54,8 +54,18 @@ stc={k:(v[0],v[1]) for k,v in json.load(open(os.path.join(ASSETS,'stcoord.json')
 PRICES=os.environ.get('NOITAS_PRICES') or os.path.join(
     os.path.expanduser('~/NOITAS/4-データ'),'NOITAS基本データ','csv','station_prices.csv')
 target={}
-for r in csv.DictReader(open(PRICES)):
-    c=r['mansion_count'].strip()
+_rows=list(csv.DictReader(open(PRICES)))
+if _rows and 'mansion_count' not in _rows[0]:
+    import sys
+    sys.exit(
+        f'{PRICES} に mansion_count 列がありません。\n'
+        '  中古マンション等のCSVが input/mlit に入っていない可能性があります。\n'
+        '  不動産情報ライブラリでは種類ごとにダウンロードが分かれるため、\n'
+        '    ① 種類=中古マンション等\n'
+        '    ② 種類=宅地（土地及び土地と建物）\n'
+        '  の2本が必要です。run_pipeline.py のログの「集計完了:」行で mansion の件数を確認してください。')
+for r in _rows:
+    c=(r.get('mansion_count') or '').strip()
     if c.isdigit() and int(c)>=10:
         target[r['station'].replace('駅','')]=int(c)
 
