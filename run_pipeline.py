@@ -16,6 +16,17 @@ def read_any(path):
         except Exception: continue
     raise RuntimeError(f'読込失敗: {path}')
 
+def quarter_range(df):
+    """取引時期の列から「2025年第2四半期〜2026年第1四半期」を作る"""
+    col = next((c for c in df.columns if '取引時期' in c), None)
+    if not col:
+        return ''
+    q = sorted(set(str(v) for v in df[col].dropna() if str(v).strip()))
+    if not q:
+        return ''
+    return q[0] if len(q) == 1 else f'{q[0]}〜{q[-1]}'
+
+
 def main():
     files = sorted(glob.glob('input/mlit/*.csv'))
     if not files: sys.exit('input/mlit/ にCSVがありません。東京の取引CSVを置いてください。')
@@ -26,8 +37,12 @@ def main():
     d1 = df[df['種類'].isin(['宅地(土地)','宅地(土地と建物)'])].copy()   # land/house
     d2 = df[df['種類']=='中古マンション等'].copy()                        # mansion
     os.makedirs('output', exist_ok=True)
+    # 対象期間は実データから作る。以前は'最新四半期(入力CSVに準拠)'という
+    # 内部向けの文言をそのまま出典欄に出しており、読者には意味が伝わらないうえ
+    # CSVを手で入れ替えている運用が透けていた。
+    period_label = quarter_range(df)
     stats = sp.build(d1, d2, 'output/station_prices.csv',
-        period_label='最新四半期(入力CSVに準拠)',
+        period_label=period_label,
         source_label='国土交通省 不動産情報ライブラリ（不動産取引価格情報・成約価格情報）',
         updated=time.strftime('%Y-%m'))
     print('集計完了:', stats)

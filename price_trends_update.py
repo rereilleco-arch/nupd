@@ -65,6 +65,7 @@ def _try(tpl, code):
 
 def fetch(code, tries=3):
     global PATH_OK
+    retryable = '?'
     for i in range(tries):
         try:
             tpls = [PATH_OK] if PATH_OK else PATH_CANDIDATES
@@ -76,12 +77,18 @@ def fetch(code, tries=3):
                     PATH_OK = tpl
                     return _data(r)
                 if r.status_code in (429, 500, 502, 503):
+                    # リトライ対象。last を消して次の試行へ回す
+                    retryable = r.status_code
                     time.sleep(3 * (i + 1)); last = None; break
             if last is not None:
                 sys.stderr.write(f"  {code}: HTTP {last.status_code} {last.url}\n")
                 return None
         except requests.RequestException as e:
             sys.stderr.write(f"  {code}: {e}\n"); time.sleep(3 * (i + 1))
+    # ここに来るのはリトライを使い切った場合。以前は何も出さずに None を返しており、
+    # 「0件なのにエラーが1行も無い」という最も分かりにくいログになっていた。
+    # 429 が並んだら原因はレート制限/クォータなので、それが分かるよう必ず出す。
+    sys.stderr.write(f"  {code}: HTTP {retryable} 再試行上限\n")
     return None
 
 def series(rows):
