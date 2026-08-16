@@ -56,6 +56,21 @@ def skey(s):
     return s.replace('ケ', 'ヶ').replace('ガ', 'ヶ').replace(' ', '')
 
 
+def find_stations(path):
+    """駅一覧CSVを探す。リポジトリではルート直下や input/ に置かれ、
+    手元では ../NOITAS基本データ/csv/ にある。見つからないと正規化が
+    黙って無効化され571駅のまま出てしまうため、候補を順に当たる。"""
+    cands = [path] if path else []
+    cands += [os.path.join(BASE, 'station_coords.csv'),
+              os.path.join(BASE, 'input', 'station_coords.csv'),
+              os.path.join(HERE, 'station_coords.csv'),
+              os.path.join(BASE, '..', 'NOITAS基本データ', 'csv', 'station_coords.csv')]
+    for c in cands:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
 def site_stations(path):
     """サイトの駅名を読む。出力はこの正式名に揃える（プラグインは駅ページの
     タイトルで引くため、L01側の名前で出すと表示されない）。
@@ -123,11 +138,14 @@ def main():
     ap.add_argument('--cache', default=os.path.join(HERE, 'l01'))
     ap.add_argument('--out', default=os.path.join(BASE, 'station_land_points.csv'))
     ap.add_argument('--max-dist', type=int, default=1500, help='駅からの距離の上限m')
-    ap.add_argument('--stations', default=os.path.join(BASE, '..', 'NOITAS基本データ', 'csv', 'station_coords.csv'),
-                    help='サイトの駅一覧。出力の駅名をこれに揃える')
+    ap.add_argument('--stations', default='', help='サイトの駅一覧。出力の駅名をこれに揃える')
     a = ap.parse_args()
 
-    site = site_stations(a.stations)
+    sf = find_stations(a.stations)
+    if not sf:
+        sys.exit('中止: station_coords.csv が見つかりません。駅名を正規化できないため出力しません。')
+    site = site_stations(sf)
+    print(f'駅一覧: {sf}（{sum(len(v) for v in site.values())}駅）')
 
     ft = json.load(open(fetch(a.cache), encoding='utf-8'))['features']
     by, unmatched = {}, {}
