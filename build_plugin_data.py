@@ -9,7 +9,8 @@
 import csv, os, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BASE = os.path.dirname(HERE)
+# 環境変数が無くてもスクリプトの置き場所から判定する（_pipeline配下なら親、直下ならそこ）
+BASE = os.environ.get('NOITAS_DIR') or (os.path.dirname(HERE) if os.path.basename(HERE)=='_pipeline' else HERE)
 DIST = os.path.join(BASE, '_dist')
 
 def main():

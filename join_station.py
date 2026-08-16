@@ -8,8 +8,10 @@ HERE=os.path.dirname(os.path.abspath(__file__))
 #   Actions  : NOITAS_DIR=. を渡してリポジトリ直下を使う
 def _dir(name, default):
     return os.environ.get(name, default)
-WORK   = _dir('NOITAS_DIR',   os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-ASSETS = _dir('NOITAS_ASSETS', os.path.dirname(os.path.abspath(__file__)))
+# 環境変数が無くてもスクリプトの置き場所から判定する（_pipeline配下なら親、直下ならそこ）
+_H = os.path.dirname(os.path.abspath(__file__))
+WORK   = os.environ.get('NOITAS_DIR') or (os.path.dirname(_H) if os.path.basename(_H)=='_pipeline' else _H)
+ASSETS = os.environ.get('NOITAS_ASSETS') or _H
 
 
 KAN='〇一二三四五六七八九'

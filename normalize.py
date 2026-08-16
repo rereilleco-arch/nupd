@@ -16,7 +16,8 @@
 import csv, re, os, unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BASE = os.path.dirname(HERE)
+# 環境変数が無くてもスクリプトの置き場所から判定する（_pipeline配下なら親、直下ならそこ）
+BASE = os.environ.get('NOITAS_DIR') or (os.path.dirname(HERE) if os.path.basename(HERE)=='_pipeline' else HERE)
 
 # 先頭が仮称 = 名称そのものが未確定（例「(仮称)港区元麻布一丁目計画」）→ 落とす
 KARI_HEAD = re.compile(r'^[\s　]*[（(]?仮称[）)]?')
