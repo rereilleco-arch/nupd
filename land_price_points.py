@@ -19,7 +19,7 @@
   resi_n, resi_price_median, comm_n, comm_price_median,   … 住宅系/商業系
   points_json  [{addr,use,price,yoy,dist,far}] 距離順に最大8地点
 """
-import argparse, csv, glob, json, os, re, statistics as st, unicodedata, urllib.request, zipfile, io as _io
+import argparse, csv, glob, json, os, re, statistics as st, sys, unicodedata, urllib.request, zipfile, io as _io
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.environ.get('NOITAS_DIR') or (os.path.dirname(HERE) if os.path.basename(HERE) == '_pipeline' else HERE)
@@ -97,6 +97,27 @@ def med(v):
     return st.median(v) if v else None
 
 
+
+def guard(out, path, minimum=1, ratio=0.8):
+    """出力が痩せていたら書かずに異常終了する。
+
+    2026-08-16、FUDOSAN DB APIが GitHub Actions から 403/404 を返し、
+    0件のまま output/muni_price_trends.csv を上書きした。ヘッダだけの
+    111バイトになり、それをプラグインが取得して全駅から価格推移が消えた。
+    失敗が「空のCSV」という正常な形で伝播したため、誰も気づかなかった。
+
+    データ取得の失敗は、古いデータを残したままRUNを赤くする方が安全。
+    """
+    if len(out) < minimum:
+        sys.exit(f'中止: 取得できたのが {len(out)} 件です。'
+                 f'{path} は上書きしません（取得元の障害を疑ってください）。')
+    if os.path.exists(path):
+        with open(path, encoding='utf-8-sig') as f:
+            prev = max(0, sum(1 for _ in f) - 1)
+        if prev and len(out) < prev * ratio:
+            sys.exit(f'中止: 既存 {prev} 件 → 今回 {len(out)} 件と大きく減りました。'
+                     f'{path} は上書きしません。意図した減少なら {path} を先に消してください。')
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cache', default=os.path.join(HERE, 'l01'))
@@ -157,6 +178,7 @@ def main():
 
     cols = ['station', 'pt_n', 'price_median', 'yoy_median',
             'resi_n', 'resi_price_median', 'comm_n', 'comm_price_median', 'points_json']
+    guard(rows, a.out, minimum=400)
     os.makedirs(os.path.dirname(a.out) or '.', exist_ok=True)
     with open(a.out, 'w', newline='', encoding='utf-8') as f:
         w = csv.DictWriter(f, fieldnames=cols)

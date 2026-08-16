@@ -131,6 +131,27 @@ def build(rows):
         ensure_ascii=False, separators=(",", ":"))
     return d
 
+
+def guard(out, path, minimum=1, ratio=0.8):
+    """出力が痩せていたら書かずに異常終了する。
+
+    2026-08-16、FUDOSAN DB APIが GitHub Actions から 403/404 を返し、
+    0件のまま output/muni_price_trends.csv を上書きした。ヘッダだけの
+    111バイトになり、それをプラグインが取得して全駅から価格推移が消えた。
+    失敗が「空のCSV」という正常な形で伝播したため、誰も気づかなかった。
+
+    データ取得の失敗は、古いデータを残したままRUNを赤くする方が安全。
+    """
+    if len(out) < minimum:
+        sys.exit(f'中止: 取得できたのが {len(out)} 件です。'
+                 f'{path} は上書きしません（取得元の障害を疑ってください）。')
+    if os.path.exists(path):
+        with open(path, encoding='utf-8-sig') as f:
+            prev = max(0, sum(1 for _ in f) - 1)
+        if prev and len(out) < prev * ratio:
+            sys.exit(f'中止: 既存 {prev} 件 → 今回 {len(out)} 件と大きく減りました。'
+                     f'{path} は上書きしません。意図した減少なら {path} を先に消してください。')
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="output/muni_price_trends.csv")
@@ -149,6 +170,7 @@ def main():
         d["muni"], d["muni_code"] = name, code
         out.append({k: d.get(k) for k in cols})
         time.sleep(a.sleep)
+    guard(out, a.out, minimum=40)
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with open(a.out, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols); w.writeheader(); w.writerows(out)
