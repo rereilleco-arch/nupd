@@ -32,6 +32,18 @@ jobs:
       - name: Build station_prices.csv from input CSVs
         run: python3 run_pipeline.py
 
+      # ▼順序について
+      # FUDOSAN DB は呼び出し数に上限がある。Enrich は「予算切れなら次回に繰り越す」
+      # 仕組みを持つが、価格推移は53市区町村を取り切れないと0件で失敗する(全か無か)。
+      # 2026-08-16、Enrich が90回使い切った後に価格推移が全件429で落ちた。
+      # 落ちて困る方を先に走らせる。
+      - name: Municipal price trends
+        env:
+          FUDOSANDB_API_KEY: ${{ secrets.FUDOSANDB_API_KEY }}
+        run: python3 price_trends_update.py --out output/muni_price_trends.csv
+
+      # ===== 追加2: 徒歩圏の居住人口 =====
+      # 町丁別人口(東京都総務局・CC BY)は未取得なら自動ダウンロードする
       - name: Enrich with FUDOSAN DB
         env:
           FUDOSANDB_API_KEY: ${{ secrets.FUDOSANDB_API_KEY }}
@@ -51,13 +63,6 @@ jobs:
           python3 aggregate_by_company.py --in output/reit_properties.csv --names reit_names.json --out output/reit_by_company.csv
 
       # ===== 追加1: 市区町村の中古マンション価格推移(2005Q3〜) =====
-      - name: Municipal price trends
-        env:
-          FUDOSANDB_API_KEY: ${{ secrets.FUDOSANDB_API_KEY }}
-        run: python3 price_trends_update.py --out output/muni_price_trends.csv
-
-      # ===== 追加2: 徒歩圏の居住人口 =====
-      # 町丁別人口(東京都総務局・CC BY)は未取得なら自動ダウンロードする
       - name: Station catchment population
         run: |
           python3 station_population.py \
