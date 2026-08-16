@@ -83,6 +83,12 @@ def geocode(addr):
     return None, city, town
 
 def run(src, path, name_col, addr_col, extra):
+    # 種データが無い場合は黙って0件で返す。
+    # 建築物環境計画書は年1回の手動配置なので、未配置でもパイプライン全体は
+    # 動く必要がある（とどまる・中央区認定だけで棟マスタは成立する）。
+    if not os.path.exists(path):
+        print(f'  {src}: 種データが無いのでスキップ ({path})')
+        return [], 0, 0
     rows=list(csv.DictReader(open(path, encoding='utf-8-sig')))
     out=[]; ng=0
     for r in rows:
