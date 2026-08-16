@@ -38,12 +38,14 @@ jobs:
       # 2026-08-16、Enrich が90回使い切った後に価格推移が全件429で落ちた。
       # 落ちて困る方を先に走らせる。
       - name: Municipal price trends
+        # 有料APIの障害で、無料データ(公示地価・人口・棟データ)の更新まで
+        # 止まらないようにする。ガードが既存CSVを守るので、失敗しても
+        # 古い正しいデータが残る。RUNには警告が出る。
+        continue-on-error: true
         env:
           FUDOSANDB_API_KEY: ${{ secrets.FUDOSANDB_API_KEY }}
         run: python3 price_trends_update.py --out output/muni_price_trends.csv
 
-      # ===== 追加2: 徒歩圏の居住人口 =====
-      # 町丁別人口(東京都総務局・CC BY)は未取得なら自動ダウンロードする
       - name: Enrich with FUDOSAN DB
         env:
           FUDOSANDB_API_KEY: ${{ secrets.FUDOSANDB_API_KEY }}
@@ -63,6 +65,8 @@ jobs:
           python3 aggregate_by_company.py --in output/reit_properties.csv --names reit_names.json --out output/reit_by_company.csv
 
       # ===== 追加1: 市区町村の中古マンション価格推移(2005Q3〜) =====
+      # ===== 追加2: 徒歩圏の居住人口 =====
+      # 町丁別人口(東京都総務局・CC BY)は未取得なら自動ダウンロードする
       - name: Station catchment population
         run: |
           python3 station_population.py \
