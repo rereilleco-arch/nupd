@@ -64,6 +64,12 @@ jobs:
             --coords input/station_coords.csv \
             --out output/station_population.csv
 
+      # ===== 追加4: 駅ごとの公示地価 =====
+      # 国土数値情報L01(GeoJSON)を自動DL。最寄駅名と距離が元データに入っている。
+      # 年1回の更新で足りるが、四半期に回しても害はない。
+      - name: Station land price points
+        run: python3 land_price_points.py --out output/station_land_points.csv
+
       # ===== 追加3: 棟データ =====
       # とどまる登録簿・中央区認定はHTMLから自動取得。
       # 建築物環境計画書だけは input/kankyo に手で置く(APIも一括DLも無い・年1回)。
@@ -87,7 +93,7 @@ jobs:
         run: |
           git config user.name  "noitas-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json output/muni_price_trends.csv output/station_population.csv output/mansions.csv
+          git add output/station_land_points.csv output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json output/muni_price_trends.csv output/station_population.csv output/mansions.csv
           git commit -m "chore: quarterly data update" || echo "no changes"
           git pull --rebase --autostash origin main || true
           git push
