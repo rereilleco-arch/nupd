@@ -33,6 +33,7 @@ jobs:
         run: python3 run_pipeline.py
 
       # ▼順序について
+      # ===== 市区町村の中古マンション価格推移(2005Q3〜) =====
       # FUDOSAN DB は呼び出し数に上限がある。Enrich は「予算切れなら次回に繰り越す」
       # 仕組みを持つが、価格推移は53市区町村を取り切れないと0件で失敗する(全か無か)。
       # 2026-08-16、Enrich が90回使い切った後に価格推移が全件429で落ちた。
@@ -64,8 +65,7 @@ jobs:
           python3 aggregate_by_station.py --in output/reit_properties.csv --stations input/tokyost_1.csv --neighbors station_neighbors.csv --out output/reit_by_station.csv
           python3 aggregate_by_company.py --in output/reit_properties.csv --names reit_names.json --out output/reit_by_company.csv
 
-      # ===== 追加1: 市区町村の中古マンション価格推移(2005Q3〜) =====
-      # ===== 追加2: 徒歩圏の居住人口 =====
+      # ===== 徒歩圏の居住人口 =====
       # 町丁別人口(東京都総務局・CC BY)は未取得なら自動ダウンロードする
       - name: Station catchment population
         run: |
@@ -73,13 +73,18 @@ jobs:
             --coords input/station_coords.csv \
             --out output/station_population.csv
 
-      # ===== 追加4: 駅ごとの公示地価 =====
+      # ===== 区市町村の集計（区ページ /ward/ の元データ）=====
+      # 取引CSVとL01から作る。APIを使わないので失敗要因が少ない。
+      - name: Ward stats
+        run: python3 ward_stats.py --out output/ward_stats.csv
+
+      # ===== 駅ごとの公示地価 =====
       # 国土数値情報L01(GeoJSON)を自動DL。最寄駅名と距離が元データに入っている。
       # 年1回の更新で足りるが、四半期に回しても害はない。
       - name: Station land price points
         run: python3 land_price_points.py --out output/station_land_points.csv
 
-      # ===== 追加3: 棟データ =====
+      # ===== 棟データ =====
       # とどまる登録簿・中央区認定はHTMLから自動取得。
       # 建築物環境計画書だけは input/kankyo に手で置く(APIも一括DLも無い・年1回)。
       - name: Restore todomaru PDF cache
@@ -102,7 +107,7 @@ jobs:
         run: |
           git config user.name  "noitas-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add output/station_land_points.csv output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json output/muni_price_trends.csv output/station_population.csv output/mansions.csv
+          git add output/ward_stats.csv output/station_land_points.csv output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json output/muni_price_trends.csv output/station_population.csv output/mansions.csv
           git commit -m "chore: quarterly data update" || echo "no changes"
           git pull --rebase --autostash origin main || true
           git push
