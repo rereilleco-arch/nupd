@@ -50,21 +50,33 @@
  },
  "中央区": {
   "_fetched": {
-   "rent": "2026-07-20"
+   "rent": "2026-07-20",
+   "profile": "2026-08-17"
   },
   "rent_tsubo": 16407,
   "rent_tsubo_low": 13946,
   "rent_tsubo_high": 17227,
-  "_rent_base": 124075
+  "_rent_base": 124075,
+  "pop2050": 210897,
+  "pop_change": 16.59,
+  "land_yoy": 15.56,
+  "flood_pct": 5.9,
+  "landslide_pct": 0.0
  },
  "中野区": {
   "_fetched": {
-   "rent": "2026-07-20"
+   "rent": "2026-07-20",
+   "profile": "2026-08-17"
   },
   "rent_tsubo": 16307,
   "rent_tsubo_low": 13861,
   "rent_tsubo_high": 17122,
-  "_rent_base": 123320
+  "_rent_base": 123320,
+  "pop2050": 361659,
+  "pop_change": 2.48,
+  "land_yoy": 9.44,
+  "flood_pct": 34.3,
+  "landslide_pct": 0.2
  },
  "八王子市": {
   "_fetched": {
@@ -391,30 +403,84 @@
   "_rent_base": 75418
  },
  "荒川区": {
-  "_fetched": {}
+  "_fetched": {
+   "rent": "2026-08-17"
+  },
+  "rent_tsubo": 13414,
+  "rent_tsubo_low": 11402,
+  "rent_tsubo_high": 14085,
+  "_rent_base": 101443
  },
  "葛飾区": {
-  "_fetched": {}
+  "_fetched": {
+   "rent": "2026-08-17"
+  },
+  "rent_tsubo": 11401,
+  "rent_tsubo_low": 9691,
+  "rent_tsubo_high": 11971,
+  "_rent_base": 86222
  },
  "西多摩郡奥多摩町": {
-  "_fetched": {}
+  "_fetched": {
+   "rent": "2026-08-17"
+  },
+  "rent_tsubo": 7281,
+  "rent_tsubo_low": 6189,
+  "rent_tsubo_high": 7645,
+  "_rent_base": 55063
  },
  "西多摩郡瑞穂町": {
-  "_fetched": {}
+  "_fetched": {
+   "rent": "2026-08-17"
+  },
+  "rent_tsubo": 9562,
+  "rent_tsubo_low": 8127,
+  "rent_tsubo_high": 10040,
+  "_rent_base": 72309
  },
  "西東京市": {
-  "_fetched": {}
+  "_fetched": {
+   "rent": "2026-08-17"
+  },
+  "rent_tsubo": 9792,
+  "rent_tsubo_low": 8323,
+  "rent_tsubo_high": 10282,
+  "_rent_base": 74053
  },
  "調布市": {
-  "_fetched": {}
+  "_fetched": {
+   "rent": "2026-08-17"
+  },
+  "rent_tsubo": 11186,
+  "rent_tsubo_low": 9508,
+  "rent_tsubo_high": 11746,
+  "_rent_base": 84597
  },
  "豊島区": {
-  "_fetched": {}
+  "_fetched": {
+   "rent": "2026-08-17"
+  },
+  "rent_tsubo": 16204,
+  "rent_tsubo_low": 13773,
+  "rent_tsubo_high": 17014,
+  "_rent_base": 122542
  },
  "足立区": {
-  "_fetched": {}
+  "_fetched": {
+   "rent": "2026-08-17"
+  },
+  "rent_tsubo": 11320,
+  "rent_tsubo_low": 9622,
+  "rent_tsubo_high": 11886,
+  "_rent_base": 85607
  },
  "青梅市": {
-  "_fetched": {}
+  "_fetched": {
+   "rent": "2026-08-17"
+  },
+  "rent_tsubo": 8297,
+  "rent_tsubo_low": 7053,
+  "rent_tsubo_high": 8712,
+  "_rent_base": 62747
  }
 }
