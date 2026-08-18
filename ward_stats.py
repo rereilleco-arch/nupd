@@ -18,7 +18,7 @@
   mansion_n, mansion_tsubo_median, mansion_price_median      … 中古マンション
   land_n, land_tsubo_median                                  … 土地
   house_n, house_price_median                                … 土地建物(戸建等)
-  isshu_n, isshu_bands_json                                  … 1棟(共同住宅)の価格帯別
+  itto_n, itto_bands_json                                  … 1棟(共同住宅)の価格帯別
   lp_n, lp_price_median, lp_yoy_median, lp_comm_median       … 公示地価
   mansion_bldg_n                                             … 棟マスタの棟数
 """
@@ -30,6 +30,9 @@ TSUBO = 3.305785
 
 # 1棟の価格帯。3億で切ると木造が571件中27件しか残らない（＝構造で切る必要がない）。
 # 帯を分けるだけで除外しないので、恣意性が入らない。
+# 列名は itto（一棟）。isshu（一種＝一種単価）と紛らわしいので使わない。
+# station_prices.csv の land_isshu_median は「一種単価」で全く別の概念。
+# 同じローマ字で別の意味を指すと、結合した瞬間に静かに混ざる。
 BANDS = [(0, 1e8, '1億円未満'), (1e8, 3e8, '1〜3億円'),
          (3e8, 10e8, '3〜10億円'), (10e8, float('inf'), '10億円以上')]
 
@@ -77,7 +80,7 @@ def read_mlit(paths):
     return rows
 
 
-def isshu_bands(rows):
+def itto_bands(rows):
     """1棟(共同住宅)を価格帯で分ける。除外はしない。
        成約価格情報は戸建てなので対象外（MLITの注記による）。"""
     ik = [r for r in rows
@@ -154,7 +157,7 @@ def main():
         man = [r for r in g if '中古マンション' in str(r.get('種類') or '')]
         land = [r for r in g if r.get('種類') == '宅地(土地)']
         house = [r for r in g if r.get('種類') == '宅地(土地と建物)']
-        n_is, bands = isshu_bands(g)
+        n_is, bands = itto_bands(g)
         pts = lp.get(code, [])
         out.append({
             'muni': mu, 'muni_code': code,
@@ -166,7 +169,7 @@ def main():
             'land_tsubo_median': med([x for x in (num(r.get('坪単価')) for r in land) if x]),
             'house_n': len(house),
             'house_price_median': med([x for x in (num(r.get('取引価格（総額）')) for r in house) if x]),
-            'isshu_n': n_is, 'isshu_bands_json': bands,
+            'itto_n': n_is, 'itto_bands_json': bands,
             'lp_n': len(pts),
             'lp_price_median': med([p for p, _, c in pts if not c]),
             'lp_comm_median': med([p for p, _, c in pts if c]),
@@ -187,7 +190,7 @@ def main():
     print(f'  駅の対応 {len(stn_muni)}駅 / 棟マスタ {sum(bldg.values())}棟 / 公示地価 {sum(len(v) for v in lp.values())}地点')
     v = sorted(out, key=lambda r: -(r['mansion_tsubo_median'] or 0))
     print('  マンション坪単価 上位:', [(r['muni'], f"{r['mansion_tsubo_median']/10000:,.0f}万") for r in v[:4] if r['mansion_tsubo_median']])
-    print('  1棟が8件以上ある市区町村:', sum(1 for r in out if r['isshu_n'] >= 8))
+    print('  1棟が8件以上ある市区町村:', sum(1 for r in out if r['itto_n'] >= 8))
 
 
 if __name__ == '__main__':
