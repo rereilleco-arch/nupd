@@ -19,6 +19,22 @@ reit_properties.csv(住宅フィルタ後) と 駅マスタ(tokyost) から、
   reit_cap_median      同区の住宅REIT cap rate中央値(駅間で同じ=区の水準)
   reit_count           同区の住宅REIT物件数
   reit_examples        近接順に並べた事例JSON(上位N件, 日本語キー)
+  rent_examples        賃料ブロック用。駅からの実距離順に並べた事例JSON(上位10件)
+  rent_count           rent_examples の母数(採用半径の中に入った件数)
+
+賃料ブロックだけ「実距離順」にしている理由
+  上の並び順(1〜3)は最小単位が「区」で、駅の所在地が属する区を距離0として扱う。
+  溜池山王駅は駅マスタの所在地が千代田区永田町2-11-1 なので自区=千代田区となり、
+  神田・秋葉原の物件が港区(赤坂駅経由0.28km)より上に来ていた。「溜池山王駅周辺の
+  賃料」の中央値が実測で21%低く出ており、賃料の指標としては成立していない。
+
+  賃料ブロック(rent_examples)は geo_props で物件に座標を与え、駅座標からの
+  実距離で並べ替える。駅ページのREIT表(reit_examples)は従来のまま触っていない。
+  片方だけ差し替えて比較できる状態を残すため。
+
+  距離はサイトに表示しない。座標は町丁目の重心か駅の位置であって物件そのものの
+  位置ではないため、「約0.7km」と書くと持っていない精度を表示することになる。
+  並べ替えと半径の判定にだけ使う内部値である。
 """
 import csv
 import json
@@ -26,6 +42,30 @@ import re
 import hashlib
 import statistics
 import argparse
+
+import geo_props
+
+# 賃料ブロックの採用半径。1.5kmで足りなければ3.0kmまで段階的に広げる。
+# 郊外はREIT物件そのものが少なく、半径を固定すると自駅の1件だけになるか
+# ブロックが消える。読者は「駅として近いか」しか見ていないので、
+# 隣の駅の物件でも入っているほうが賃料の目安として役に立つ。
+# 「3.0km以内から、駅に近い順にN件」。件数を固定して半径を可変にする方式。
+#
+# 物件密度は駅によって極端に違う(1.5km圏に68件の岩本町と、3km圏に1件の保谷)。
+# 半径を固定して中に入った全件を使うと、都心では隣の駅まで巻き込んで薄まる。
+# 岩本町の1.5km圏66件は日本橋・東神田・浅草橋で、岩本町駅の賃料ではない。
+# 駅の賃料を表すのは「駅に最も近い物件」なので、件数を固定するほうが実態に近い。
+#
+# N=10 にした根拠: 10番目の物件までの距離の中央値が1.35km。当初想定していた
+# 1.5km圏にほぼ一致する。N=15 にすると1.63kmに伸び、溜池山王では1.92kmまで
+# 広がって麻布台・二番町が入り、中央値が6.2%下がる(赤坂・虎ノ門・愛宕・六本木で
+# 構成される1.5km圏のほうが素直)。密集駅では N を増やしても距離は伸びないが、
+# 中密度の駅で効いてしまう。
+#
+# 母数は持たない。以前は「周辺12件のうち近い順に10件を表示」と出していたが、
+# 母数を基準に中央値を計算していると誤読される。表示行=中央値の母集団=N件。
+RENT_RADIUS = 3.0
+RENT_MAX_SHOW = 10
 
 TOKYO23 = ['千代田区','中央区','港区','新宿区','文京区','台東区','墨田区','江東区',
            '品川区','目黒区','大田区','世田谷区','渋谷区','中野区','杉並区','豊島区',
@@ -209,11 +249,129 @@ def load_location_master(path):
     return out
 
 
+def load_detail_master(path):
+    """reit_detail_scan.py の出力(個別物件明細の住所・ML種別)を読む。
+
+    キーは load_location_master と同じ規約:
+      (法人名, 物件名) と (法人名, 正規化物件名 + '\\x00norm') の2本を張る。
+    ファイルが無ければ空を返す(この補完は任意)。
+    """
+    out = {}
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            for r in csv.DictReader(f):
+                v = {'address': r.get('address', ''), 'ml_class': r.get('ml_class', ''),
+                     'granularity': r.get('granularity', '')}
+                out[(r['reit_name'], r['property_name'])] = v
+                out.setdefault((r['reit_name'], _norm_pname(r['property_name']) + '\x00norm'), v)
+    except FileNotFoundError:
+        pass
+    return out
+
+
+def detail_rank(addr):
+    """住所の粒度を数値化する。大きいほど細かい。上書きの可否判定に使う。"""
+    s = str(addr or '')
+    if not s:
+        return 0
+    if re.search(r'[一二三四五六七八九十〇\d０-９]+丁目', s):
+        return 3
+    if re.search(r'[0-9０-９]', s):
+        return 2
+    # 「東京都渋谷区」だけなら町名が無い
+    body = re.sub(r'^東京都', '', s)
+    body = re.sub(r'^.*?[区市町村]', '', body)
+    return 2 if len(body.strip()) >= 2 else 1
+
+
 def to_float(s):
     try:
         return float(s) if s not in (None, '') else None
     except ValueError:
         return None
+
+
+TSUBO = 3.305785
+
+def period_end_year(period):
+    """有報の期間表記から決算期末の年を取り出す。
+
+    例: '有価証券報告書（内国投資証券）－第41期(2025/11/01－2026/04/30)' -> 2026
+    括弧内の日付は「開始－終了」なので、最後に現れる年を期末とみなす。
+    読めなければ None(表示側で時点を書かない)。
+    """
+    if not period:
+        return None
+    ys = re.findall(r'(20\d{2})[/年]', str(period))
+    return int(ys[-1]) if ys else None
+
+
+def rent_per_tsubo(p):
+    """入居中住戸の月額賃料から 円/坪・月 を出す。
+
+    分母は「賃貸可能面積 × 稼働率」= 実際に賃貸されている面積。
+    有報の「月額賃料」は満室想定ではなく、締結済みの賃貸借契約の合計額である。
+    主要12法人の注記を実査したところ、8法人が「締結されている賃貸借契約書等に
+    表示された月額賃料」と明示し、満室想定と書く法人は1社も無かった
+    (有報は現況を開示する書類なので想定値を載せない)。
+
+    賃貸可能面積で割ると空室分だけ坪単価が低く出る。稼働97.9%なら誤差2%だが、
+    稼働84.6%の物件では18%低く見え、「賃料が高いが空室が多い物件」を
+    「賃料が安い物件」と取り違える。VUのベンチマークとしては致命的。
+
+    稼働率が無い物件は満室(100%)とみなさず、そのまま賃貸可能面積で割る。
+    過大に出すより控えめに出すほうが安全なため(実勢の下限として読める)。
+
+    rent_monthly_mn は reit_parser が有報の収入列から作る月額(百万円)。
+    年間表記の法人は12で割って揃えてあり、期間が読めない列は空にしてある
+    (三井不動産アコモデーションの「当期中に受け取った賃貸事業収入」など)。
+    """
+    m = to_float(p.get('rent_monthly_mn'))
+    a = to_float(p.get('leasable_area'))
+    if not m or not a or a <= 0:
+        return None
+    occ = to_float(p.get('occupancy'))
+    leased = a * (occ / 100.0) if occ and 0 < occ <= 100 else a
+    if leased <= 0:
+        return None
+    return int(round(m * 1_000_000 / (leased / TSUBO)))
+
+
+def build_rent_examples(station_title, station_pt, rent_pool):
+    """駅に近い順に RENT_MAX_SHOW 件を返す(RENT_RADIUS より遠い物件は対象外)。
+
+    戻り値 (examples, 件数, N件目までの距離km)。座標が無い駅や
+    半径内に1件も無い駅は ([], 0, None) を返し、表示側でブロックごと出さない。
+    """
+    if not station_pt:
+        return [], 0, None
+    # 同一距離のときに駅名を含む物件を先に出すための照合キー。
+    # 座標は町丁目の重心なので、同じ町の物件は距離が小数点以下まで一致する。
+    # そこをハッシュだけで切ると「レジディア目黒Ⅳが目黒駅の表に出ない」「カスタリア
+    # 市ヶ谷が市ケ谷駅の表に出ない」といったことが起きる(実測7件)。
+    base = geo_props.norm_ke(re.sub(r'駅$', '', station_title))
+    if len(base) < 2:
+        base = None
+
+    cand = [(geo_props.haversine(station_pt, p['pt']), p) for p in rent_pool]
+    d = sorted(
+        (x for x in cand if x[0] <= RENT_RADIUS),
+        # 同一距離は 精度 → 駅名一致 → 物件名ハッシュ で決める。距離順は崩さない。
+        # 賃料の高い順に並べると「高い物件だけ選んだ」ことになるので使わない。
+        key=lambda x: (x[0], x[1]['acc_rank'],
+                       0 if (base and base in geo_props.norm_ke(x[1]['name'])) else 1,
+                       stable_shuffle_key(station_title, x[1]['name'])))
+    if not d:
+        return [], 0, None
+    keep = d[:RENT_MAX_SHOW]
+    out = []
+    for _, p in keep:
+        out.append({
+            '物件': p['name'], 'REIT': p['reit'],
+            '月坪賃料': p['rent'], '稼働率': p['occ'],
+            'NOI利回り': p['cap'], '賃料時点': p['asof'],
+        })
+    return out, len(out), round(keep[-1][0], 2)
 
 
 def stable_shuffle_key(station_name, prop_name):
@@ -231,6 +389,9 @@ def main():
     ap.add_argument('--locations', default='reit_locations.csv',
                     help='REIT公式サイト由来の物件所在地(恒久データ)。'
                          '有報に住所が無い法人の補完に使う。無ければ補完しない。')
+    ap.add_argument('--details', default='reit_detail_locations.csv',
+                    help='有報の個別物件明細から取った住所とML種別(reit_detail_scan.py の出力)。'
+                         '物件表の所在地より粒度が高いので、あれば優先する。無ければ使わない。')
     ap.add_argument('--out', default='reit_by_station.csv')
     ap.add_argument('--limit', type=int, default=0,
                     help='駅ごとの事例保持件数(0=全件)。表示件数はプラグイン側で絞るため既定は全件。')
@@ -260,6 +421,30 @@ def main():
         else:
             r['location_source'] = ''
 
+    # 有報の個別物件明細の住所で上書きする。
+    #
+    # 物件表の所在地は7割が「東京都渋谷区」までしか書かれていないが、個別明細には
+    # 番地まで載っている。カスタリア原宿は物件表が「東京都渋谷区」なので物件名から
+    # 原宿駅の座標そのもの(0.0km)を当てていたが、明細には「渋谷区千駄ケ谷三丁目
+    # 55番3号」とあり、実際は原宿駅から徒歩8分。同じ一次資料なので上書きして良い。
+    #
+    # ML種別も同じ明細にあるので、ここで拾って持たせる。パススルー型なら有報の
+    # 賃料はエンドテナントの転貸賃料、賃料保証型ならML会社がREITに払う保証賃料で
+    # 意味が違う(現状は除外していない。除外するならこの列を見る)。
+    details = load_detail_master(args.details)
+    filled_from_detail = 0
+    for r in props:
+        d = (details.get((r.get('reit_name', ''), r.get('property_name', '')))
+             or details.get((r.get('reit_name', ''), _norm_pname(r.get('property_name', '')) + '\x00norm')))
+        r['ml_class'] = d['ml_class'] if d else ''
+        if not d:
+            continue
+        # 明細の住所のほうが粒度が高いときだけ上書きする
+        if detail_rank(d['address']) > detail_rank(r.get('location', '')):
+            r['location'] = d['address']
+            r['location_source'] = '有報明細'
+            filled_from_detail += 1
+
     # 脱落の内訳を数える。住宅と判定されても location が空だと extract_muni() が
     # None を返し、その物件は駅ページに一切出ない。件数が急に減った場合に
     # パース側の劣化なのかを、このログだけで切り分けられるようにする。
@@ -283,6 +468,51 @@ def main():
         if r['_app'] is None:
             continue   # 鑑定評価額が無い物件は事例に出さない
         by_muni.setdefault(muni, []).append(r)
+
+    # ---- 賃料ブロック用の座標付け ----
+    # 対象は「月坪賃料が出る住宅物件」だけ。鑑定評価額の有無は問わない
+    # (賃料ブロックは利回り事例ではないため)。
+    geo = geo_props.Geo(extract_muni=extract_muni)
+    rent_pool, geo_acc = [], {}
+    excluded_ml = []
+    for r in props:
+        rt = rent_per_tsubo(r)
+        if rt is None:
+            continue
+        # 賃料保証型・固定型のマスターリース物件は外す。
+        #
+        # 有報の「年間賃料」は、パススルー型ならML会社がエンドテナントから受け取る
+        # 転貸賃料だが、保証型ならML会社がREITに払う保証賃料である。後者は市場賃料
+        # ではないので、混ぜると別の指標を平均することになる。
+        #
+        # 実測で保証型は12件(東京の賃料対象695件の1.7%)しかないが、578駅のうち66駅の
+        # 中央値が動く。ADRが都心をパススルー、周辺部を保証型にしているため影響が
+        # 板橋・北・練馬・西東京に集中し、浮間舟渡+18.8%・赤羽+11.0%と、
+        # 特定エリアを系統的に安く見せていた。
+        #
+        # 保証型が拾っているのは「賃料が低い物件」ではなく「市場賃料でない物件」である。
+        # カレッジコート田無(15,887円/坪)は学生専用レジデンスで、住戸が極小なため
+        # 坪単価が高く出る。オペレーター保証なので保証型になっている。除外すると
+        # 西武柳沢の中央値は下がる(-29.8%)が、それが田無の実勢である。
+        if r.get('ml_class') == '保証・固定':
+            excluded_ml.append((r.get('property_name', ''), rt))
+            continue
+        la, lo, acc = geo.locate(r.get('location', ''), r.get('property_name', ''))
+        geo_acc[acc] = geo_acc.get(acc, 0) + 1
+        if la is None:
+            continue
+        rent_pool.append({
+            'pt': (la, lo),
+            'acc': acc,
+            # 精度の順位。同じ距離に並んだとき、住所で引けた物件を物件名推定より前に出す。
+            'acc_rank': {'丁目': 0, '町名': 1, '物件名': 2}.get(acc, 3),
+            'rent': rt,
+            'name': r.get('property_name', ''),
+            'reit': r.get('reit_name', ''),
+            'occ': to_float(r.get('occupancy')),
+            'cap': to_float(r.get('cap_rate')),
+            'asof': period_end_year(r.get('period')),
+        })
 
     # 区ごとの中央値・件数(駅間で共通)
     muni_stat = {}
@@ -309,6 +539,7 @@ def main():
     neighbors = load_neighbors(args.neighbors)
 
     out_rows = []
+    reach = []          # N件目までの距離。どこまで探しているかを実行ログで見る
     for title, addr in sorted(stations.items()):
         muni = station_muni.get(title)
         if not muni or muni not in by_muni:
@@ -368,13 +599,29 @@ def main():
                 '稼働率': to_float(p.get('occupancy')),
                 '町名': p['_town'],
             }
+            # 月坪賃料。プロが実際に取れている賃料で、現行の賃料坪単価
+            # (FUDOSAN DBの標準条件モデル推定・市区町村単位49通り)とは性格が違う。
+            # 表示対象5件のうち86.4%が埋まる(実測)。埋まらない物件は '—' になるが、
+            # 近接順を崩してまで賃料のある物件を優先はしない(並びの意味が壊れるため)。
+            item['月坪賃料'] = rent_per_tsubo(p)
+            # 賃料の時点。period は「有価証券報告書…第41期(2025/11/01－2026/04/30)」形式で、
+            # 決算期は法人ごとに違う。表示側で「◯年時点」と出すために期末の年を持たせる。
+            item['賃料時点'] = period_end_year(p.get('period'))
             examples.append(item)
+
+        # 賃料ブロックは区ではなく駅座標からの実距離で選ぶ(上の examples とは別系統)
+        rent_ex, rent_n, rent_r = build_rent_examples(
+            title, geo.station_point(title), rent_pool)
+        if rent_r is not None:
+            reach.append(rent_r)
 
         out_rows.append({
             'station': title,
             'reit_cap_median': muni_stat[muni]['cap_median'],
             'reit_count': muni_stat[muni]['count'],
             'reit_examples': json.dumps(examples, ensure_ascii=False),
+            'rent_examples': json.dumps(rent_ex, ensure_ascii=False) if rent_ex else '',
+            'rent_count': rent_n or '',
         })
 
     # 上書き前に旧版を読み、差分を出す(別途 diff を取らなくても変化に気づけるように)
@@ -387,7 +634,8 @@ def main():
         pass
 
     with open(args.out, 'w', newline='', encoding='utf-8-sig') as f:
-        w = csv.DictWriter(f, fieldnames=['station', 'reit_cap_median', 'reit_count', 'reit_examples'])
+        w = csv.DictWriter(f, fieldnames=['station', 'reit_cap_median', 'reit_count',
+                                          'reit_examples', 'rent_examples', 'rent_count'])
         w.writeheader()
         w.writerows(out_rows)
 
@@ -397,7 +645,25 @@ def main():
     print(f"  区が引けて採用 {sum(len(v) for v in by_muni.values())}件")
     print(f"  公式サイト由来で住所を補完: {filled_from_master}件 "
           f"(マスタ {len(locmaster)}件)")
+    print(f"  有報の個別物件明細で住所を上書き: {filled_from_detail}件 "
+          f"(明細 {len(details)//2}件)")
     print(f"  脱落: location欄が空 {drop_no_loc}件 / 東京都外 {drop_other_pref}件")
+
+    print(f"\n[賃料ブロック] 月坪賃料が出る物件 {sum(geo_acc.values())}件 の座標づけ")
+    for k in ('丁目', '町名', '物件名', 'なし'):
+        if geo_acc.get(k):
+            print(f"   {k:<6}{geo_acc[k]:>5}件" + ('   ← 座標なし=採用しない' if k == 'なし' else ''))
+    print(f"   採用 {len(rent_pool)}件"
+          + (f"（賃料保証・固定型のML物件 {len(excluded_ml)}件を除外）" if excluded_ml else ''))
+    for nm, rt in sorted(excluded_ml, key=lambda x: -x[1]):
+        print(f"      除外 {nm[:24]:<26}{rt:>7,}円/坪")
+    if reach:
+        reach.sort()
+        q = lambda f: reach[min(len(reach) - 1, int(len(reach) * f))]
+        print(f'   最後の1件までの距離: 中央 {reach[len(reach)//2]:.2f}km / '
+              f'上位25% {q(0.75):.2f}km / 上位10% {q(0.90):.2f}km / 最遠 {reach[-1]:.2f}km')
+    filled = sum(1 for r in out_rows if r['rent_examples'])
+    print(f"   賃料ブロックを出せる駅 {filled}/{len(out_rows)}")
     if drop_by_reit:
         top = sorted(drop_by_reit.items(), key=lambda x: -x[1])[:5]
         print("  location欠損の多い法人: " + ', '.join(f'{k} {v}件' for k, v in top))

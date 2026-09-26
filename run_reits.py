@@ -42,6 +42,9 @@ FIELDS = ['reit_name', 'edinet_code', 'doc_id', 'period', 'property_name',
           'acquisition_price', 'book_value', 'appraisal_value', 'cap_rate', 'appraiser',
           'location', 'region', 'land_area', 'gross_floor_area', 'leasable_area', 'leased_area',
           'occupancy', 'tenant_count', 'investment_ratio', 'rental_income',
+          # 収入列の期間は法人ごとに違う(年間/月額/当期)。原文の期間を rent_basis に、
+          # 月額換算できたものだけ rent_monthly_mn に入れる。換算不能は空。
+          'rent_basis', 'rent_monthly_mn',
           'discount_rate', 'terminal_cap']
 
 # レポートで充足率を見る項目。use_type と acquisition_date を追加しないと
@@ -53,6 +56,8 @@ CHECK_FIELDS = ['acquisition_price', 'appraisal_value', 'cap_rate', 'appraiser',
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--matches', default='edinet_reit_matches.csv')
+    ap.add_argument('--yuho', default=None,
+                    help='edinet_latest_yuho.py の出力。最新書類が有報でない法人のdocIDを差し替える')
     ap.add_argument('--limit', type=int, default=0, help='先頭N法人だけ処理(0=全部)')
     ap.add_argument('--test', action='store_true', help='用途がバラけるよう代表法人を選んで実行')
     ap.add_argument('--sleep', type=float, default=1.0)
@@ -66,6 +71,29 @@ def main():
 
     with open(args.matches, encoding='utf-8-sig') as f:
         rows = list(csv.DictReader(f))
+
+    # 【順序が重要】docIDの差し替えを先に行う。
+    # 以前はここで「最新formCodeが07B000の法人」に絞ってから差し替えていたため、
+    # 救済したい21法人（最新書類が発行登録書や訂正届出書の法人）がこの行で
+    # 落ちて、差し替えが一度も効かなかった。
+    import os as _os
+    # 最新有報の一覧。CI では --yuho で渡す(既定はローカルの置き場所)。
+    # 絶対パス決め打ちだと GitHub Actions で差し替えが一度も効かず、
+    # 「エラーは出ないが物件が落ちる」という最も分かりにくい壊れ方をする。
+    _yp = _os.path.expanduser(getattr(args, 'yuho', None)
+                              or '~/NOITAS/4-データ/NOITAS基本データ/csv/edinet_latest_yuho.csv')
+    if _os.path.exists(_yp):
+        with open(_yp, encoding='utf-8-sig') as _f:
+            _y = {x['edinet_code']: x for x in csv.DictReader(_f)}
+        _n = 0
+        for _t in rows:
+            _e = _y.get(_t['EDINETコード'])
+            if _e and _e['doc_id'] and _e['doc_id'] != _t.get('最新docID'):
+                _t['最新docID'] = _e['doc_id']
+                _t['最新docDescription'] = _e.get('description', '')
+                _t['最新formCode'] = '07B000'      # 差し替え後は有報なので絞り込みを通す
+                _n += 1
+        print(f"最新有報で docID を差し替え: {_n}法人")
 
     # 有報(07B000)を最新書類に持つ法人のみ対象
     targets = [r for r in rows if str(r.get('最新formCode', '')).zfill(6) == '07B000']
