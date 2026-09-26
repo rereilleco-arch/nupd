@@ -32,6 +32,14 @@ jobs:
       - name: Build station_prices.csv from input CSVs
         run: python3 run_pipeline.py
 
+      # ===== 年別推移（暦年の確定値アーカイブ）=====
+      # input/mlit の直近ファイル(例: 2025Q2〜2026Q1)を四半期ごとに input/mlit_quarters に
+      # 貯め、ある年のQ1〜Q4がそろったら集計して output/station_yearly.csv に1年ぶん追記する。
+      # 追記した年は二度と書き換えない(取引データは確定後に変わらない)。
+      # 直近ファイルは4四半期ぶんあるので、入れ替えを3回まで飛ばしても取りこぼさない。
+      - name: Yearly archive
+        run: python3 yearly_update.py --archive output/station_yearly.csv --incoming input/mlit --store input/mlit_quarters
+
       # ▼順序について
       # ===== 市区町村の中古マンション価格推移(2005Q3〜) =====
       # FUDOSAN DB は呼び出し数に上限がある。Enrich は「予算切れなら次回に繰り越す」
@@ -123,7 +131,8 @@ jobs:
         run: |
           git config user.name  "noitas-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add output/ward_stats.csv output/station_land_points.csv output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json output/muni_price_trends.csv output/station_population.csv output/mansions.csv
+          git add output/ward_stats.csv output/station_land_points.csv output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json output/muni_price_trends.csv output/station_population.csv output/mansions.csv output/station_yearly.csv
+          git add -A input/mlit_quarters
           git commit -m "chore: quarterly data update" || echo "no changes"
           git pull --rebase --autostash origin main || true
           git push
