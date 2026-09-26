@@ -56,13 +56,29 @@ jobs:
             --prices output/station_prices.csv \
             --out output/fudosan_enrichment.csv
 
+      # ▼REITの5行について（2026-09 に2行追加・2行に引数追記）
+      # edinet_latest_yuho.py
+      #   edinet_reit_matches.csv が持つのは「最新のdocID」であって「最新の有報」では
+      #   ない。発行登録書や訂正届出書が後から出るとそちらが最新になり、物件表を
+      #   取りに行けず法人ごと落ちる(実測で19法人1,635物件)。有報(07B000)だけを
+      #   遡って拾い、run_reits.py に --yuho で渡して docID を差し替える。
+      #   run_reits.py 側は以前このファイルを絶対パスで決め打ちしていたため、
+      #   CI では差し替えが一度も効いていなかった。
+      # reit_detail_scan.py
+      #   物件表の所在地は7割が「東京都渋谷区」までしか無い。個別物件明細には
+      #   番地まであるので、ここを読まないと座標を物件名から推定するしかない。
+      #   賃料保証型マスターリースの判定もこの明細だけにある(保証型は市場賃料では
+      #   ないので aggregate_by_station.py が除外する)。
+      #   aggregate_by_station.py の入力なので、必ずその前に走らせる。
       - name: Fetch & parse REIT filings from EDINET
         env:
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
         run: |
           python3 edinet_reit_recon.py scan --days 500
-          python3 run_reits.py --out output/reit_properties.csv --report output/reit_parse_report.csv
-          python3 aggregate_by_station.py --in output/reit_properties.csv --stations input/tokyost_1.csv --neighbors station_neighbors.csv --out output/reit_by_station.csv
+          python3 edinet_latest_yuho.py --days 420 --out edinet_latest_yuho.csv
+          python3 run_reits.py --yuho edinet_latest_yuho.csv --out output/reit_properties.csv --report output/reit_parse_report.csv
+          python3 reit_detail_scan.py --props output/reit_properties.csv --out-dir .
+          python3 aggregate_by_station.py --in output/reit_properties.csv --stations input/tokyost_1.csv --neighbors station_neighbors.csv --details reit_detail_locations.csv --out output/reit_by_station.csv
           python3 aggregate_by_company.py --in output/reit_properties.csv --names reit_names.json --out output/reit_by_company.csv
 
       # ===== 徒歩圏の居住人口 =====
