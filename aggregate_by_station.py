@@ -67,6 +67,18 @@ import geo_props
 RENT_RADIUS = 3.0
 RENT_MAX_SHOW = 10
 
+# REITページ用。賃料ブロックと同じ距離計算で、3km以内・近い順30件。
+#
+# 以前のREITページは reit_examples（区と近隣駅の区の物件を、物件名一致→区→ランダムで
+# 並べた最大223件）をそのまま出しており、溜池山王に神田が並ぶ誤りが残っていた。
+# 件数を賃料(10件)と変えるのは、答える問いが違うため。賃料は場所で大きく変わるので
+# 近い10件に絞るが、REITページは「この辺りの収益物件がどう取得・評価されているか」を
+# 比較事例で見せるページで、NOI利回りは東京全体で3.3〜3.6%に集まり範囲を広げても
+# 水準がぶれない（近い10件と30件の中央値の差は中央値0.05pt）。
+# 中央値は表示する30件で取る。一覧と母数を一致させる。
+# 賃料保証型のMLは外さない。NOIはREITが実際に受け取る収入なので保証型でも正しい。
+REIT_NEAR_MAX = 30
+
 TOKYO23 = ['千代田区','中央区','港区','新宿区','文京区','台東区','墨田区','江東区',
            '品川区','目黒区','大田区','世田谷区','渋谷区','中野区','杉並区','豊島区',
            '北区','荒川区','板橋区','練馬区','足立区','葛飾区','江戸川区']
@@ -374,6 +386,22 @@ def build_rent_examples(station_title, station_pt, rent_pool):
     return out, len(out), round(keep[-1][0], 2)
 
 
+def build_reit_near(station_title, station_pt, reit_pool):
+    """REITページ用に、3km以内の物件を近い順に最大 REIT_NEAR_MAX 件返す。
+    並べ替えキーは賃料と同じ（距離 → 位置精度 → 駅名一致 → ハッシュ）。"""
+    if not station_pt:
+        return []
+    base = geo_props.norm_ke(re.sub(r'駅$', '', station_title))
+    if len(base) < 2:
+        base = None
+    cand = [(geo_props.haversine(station_pt, p['pt']), p) for p in reit_pool]
+    d = sorted((x for x in cand if x[0] <= RENT_RADIUS),
+               key=lambda x: (x[0], x[1]['acc_rank'],
+                              0 if (base and base in geo_props.norm_ke(x[1]['name'])) else 1,
+                              stable_shuffle_key(station_title, x[1]['name'])))
+    return [p['item'] for _, p in d[:REIT_NEAR_MAX]]
+
+
 def stable_shuffle_key(station_name, prop_name):
     """駅名+物件名のハッシュ。駅ごとに決定的だが物件間で擬似ランダムな順序を与える。"""
     h = hashlib.md5((station_name + '|' + prop_name).encode('utf-8')).hexdigest()
@@ -474,6 +502,26 @@ def main():
     # (賃料ブロックは利回り事例ではないため)。
     geo = geo_props.Geo(extract_muni=extract_muni)
     rent_pool, geo_acc = [], {}
+    reit_pool = []   # REITページ用（cap・鑑定評価額・座標がそろう住宅物件。ML種別は問わない）
+    for r in props:
+        cap = to_float(r.get('cap_rate')); app = to_float(r.get('appraisal_value'))
+        if cap is None or app is None:
+            continue
+        la, lo, acc = geo.locate(r.get('location', ''), r.get('property_name', ''))
+        if la is None:
+            continue
+        reit_pool.append({
+            'pt': (la, lo), 'acc_rank': {'丁目': 0, '町名': 1, '物件名': 2}.get(acc, 3),
+            'name': r.get('property_name', ''),
+            'item': {
+                '物件': r.get('property_name', ''), 'REIT': r.get('reit_name', ''),
+                '取得百万': to_float(r.get('acquisition_price')), '鑑定百万': app,
+                'NOI利回り': cap, '稼働率': to_float(r.get('occupancy')),
+                '町名': extract_town(r.get('location', '')),
+                '月坪賃料': rent_per_tsubo(r), '賃料時点': period_end_year(r.get('period')),
+            },
+        })
+
     excluded_ml = []
     for r in props:
         rt = rent_per_tsubo(r)
@@ -610,6 +658,8 @@ def main():
             examples.append(item)
 
         # 賃料ブロックは区ではなく駅座標からの実距離で選ぶ(上の examples とは別系統)
+        reit_near = build_reit_near(title, geo.station_point(title), reit_pool)
+        near_caps = [e['NOI利回り'] for e in reit_near if e['NOI利回り'] is not None]
         rent_ex, rent_n, rent_r = build_rent_examples(
             title, geo.station_point(title), rent_pool)
         if rent_r is not None:
@@ -619,9 +669,19 @@ def main():
             'station': title,
             'reit_cap_median': muni_stat[muni]['cap_median'],
             'reit_count': muni_stat[muni]['count'],
-            'reit_examples': json.dumps(examples, ensure_ascii=False),
+            # 旧一覧（区と近隣区・最大223件）は書き出さない。REITページと駅トップは
+            # reit_near_*（3km以内・近い順30件）に移った。列は残して空にする（CSVが
+            # 9.8MB→14.6MBに膨らみ、取込が重くなるため）。
+            'reit_examples': '',
             'rent_examples': json.dumps(rent_ex, ensure_ascii=False) if rent_ex else '',
-            'rent_count': rent_n or '',
+            # 0件でも数値を入れる（取込は空セルを「既存値を保持」と扱うため、空だと
+            # プラグインが「未取込」と「3km以内に0件」を区別できず、区単位の旧データに落ちる）
+            'rent_count': rent_n,
+            'reit_near_examples': json.dumps(reit_near, ensure_ascii=False) if reit_near else '',
+            'reit_near_cap_median': round(statistics.median(near_caps), 2) if near_caps else '',
+            # 0件の駅も必ず数値を入れる。取込は空セルを「既存値を保持」と扱うため、
+            # 空にするとプラグインが「未取込」と「3km以内に0件」を区別できない。
+            'reit_near_count': len(reit_near),
         })
 
     # 上書き前に旧版を読み、差分を出す(別途 diff を取らなくても変化に気づけるように)
@@ -635,7 +695,8 @@ def main():
 
     with open(args.out, 'w', newline='', encoding='utf-8-sig') as f:
         w = csv.DictWriter(f, fieldnames=['station', 'reit_cap_median', 'reit_count',
-                                          'reit_examples', 'rent_examples', 'rent_count'])
+                                          'reit_examples', 'rent_examples', 'rent_count',
+                                          'reit_near_examples', 'reit_near_cap_median', 'reit_near_count'])
         w.writeheader()
         w.writerows(out_rows)
 
@@ -673,8 +734,8 @@ def main():
         added = sorted(set(now) - set(prev))
         removed = sorted(set(prev) - set(now))
         changed = [s_ for s_ in set(now) & set(prev)
-                   if now[s_]['reit_examples'] != prev[s_]['reit_examples']
-                   or str(now[s_]['reit_count']) != str(prev[s_]['reit_count'])]
+                   if now[s_].get('reit_near_examples', '') != prev[s_].get('reit_near_examples', '')
+                   or now[s_].get('rent_examples', '') != prev[s_].get('rent_examples', '')]
         print(f"\n[前回との差分] 駅 追加{len(added)} / 削除{len(removed)} / 内容変化{len(changed)}")
         if removed:
             print(f"  削除された駅(要確認): {removed[:10]}")
@@ -682,7 +743,7 @@ def main():
         worse = []
         for s_ in set(now) & set(prev):
             try:
-                a, b = int(now[s_]['reit_count']), int(prev[s_]['reit_count'])
+                a, b = int(now[s_]['reit_near_count']), int(prev[s_].get('reit_near_count') or 0)
             except (ValueError, TypeError):
                 continue
             if b > 0 and a < b * 0.8:
@@ -695,8 +756,8 @@ def main():
     # サンプル: 千代田区の数駅で近接が効いているか
     for r in out_rows:
         if r['station'] in ('大手町駅', '麹町駅', '市ケ谷駅'):
-            ex = json.loads(r['reit_examples'])
-            print(f"\n{r['station']} (中央値{r['reit_cap_median']}% / {r['reit_count']}件) 上位3:")
+            ex = json.loads(r['reit_near_examples'] or '[]')
+            print(f"\n{r['station']} (近い順{r['reit_near_count']}件の中央値{r['reit_near_cap_median']}%) 上位3:")
             for e in ex[:3]:
                 print(f"  [{e['町名']:<8}] {e['物件'][:22]:<24} cap={e['NOI利回り']}")
 
