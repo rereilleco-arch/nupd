@@ -43,7 +43,12 @@ CHOUME = re.compile(r'[一二三四五六七八九十〇\d０-９]+丁目')
 ADDR_RX = re.compile(r'[都道府県].*?[市区町村]')
 # 個別物件明細で住所が入っている行の見出し。住居表示を優先し、無ければ地番。
 # 「所在地→住居表示→値」と2段になる法人(スターツ)があるので '住居表示' 単独も入れる。
-ADDR_LABELS = ('所在地（住居表示）', '住居表示', '住所', '所在地', '地番')
+ADDR_LABELS = ('所在地（住居表示）', '住居表示', '(住居表示)', '（住居表示）', '住所', '所在地', '地番')
+# 建築時期の見出し。法人ごとに違う（2026-09 実査）:
+#   建築時期（大和ハウス・ADR・オリックス・NTT・日本都市ファンド）／竣工年月日（三井不動産アコモ）
+#   竣工年月（日本リート・積水ハウス）／竣工日（野村）／建築年月日（マリモ）。末尾に（注n）が付くことがある
+BUILT_KEY = re.compile(r'^(建築時期|竣工年月日?|竣工日|竣工時期|建築年月日?|新築年月日?)([（(]注\d*[）)])?$')
+YEAR_RX = re.compile(r'(19|20)\d{2}\s*年')
 NAME_LABELS = ('物件名称', '物件名')
 # 物件名の頭に付く物件番号（T-001 / RE-020 / Ｃ－2 / O-01 など）。全角ハイフン・全角空白あり。
 CODE_HEAD = re.compile(r'^[A-Za-zＡ-Ｚａ-ｚ]{1,3}[-－‐]?\d{1,4}[\s　\xa0]+')
@@ -94,6 +99,8 @@ def clean_name(s):
 
 
 def granularity(addr):
+    if not addr:
+        return ''
     if CHOUME.search(addr):
         return '丁目'
     if re.search(r'\d', addr):
@@ -162,8 +169,12 @@ def scan_details(soup):
             if v and ADDR_RX.search(v):
                 addr = v
                 break
-        if not addr:
+        # 建築時期（見出しの表記ゆれを BUILT_KEY で吸収）。1棟の簡易査定の事例に使う
+        built = next((v for k, v in d.items() if BUILT_KEY.match(k) and YEAR_RX.search(v)), '')
+        # 住所が取れない形でも、建築時期があれば物件名と建築時期だけは残す（住所は空）
+        if not addr and not built:
             continue
+        addr = addr or ''
         name = None
         for label in NAME_LABELS:
             v = d.get(norm_key(label))
@@ -204,8 +215,35 @@ def scan_details(soup):
             'ml_company': d.get('ML会社', ''),
             'pm_company': d.get('PM会社', ''),
             'units': d.get('賃貸可能戸数', ''),
-            'built': d.get('建築時期', ''),
+            'built': built,
         })
+    return out
+
+
+def scan_built_columns(soup):
+    """一覧表（1行1物件・列に物件名と竣工年月がある形）から {物件名: 建築時期} を作る。
+    積水ハウス・リート、KDX、スターアジアは個別明細が無く、建築時期はこの一覧にだけある。"""
+    out = {}
+    for tb in soup.find_all('table'):
+        rows = [[c.get_text(' ', strip=True) for c in tr.find_all(['td', 'th'])] for tr in tb.find_all('tr')]
+        ni = bi = None
+        for hi, row in enumerate(rows[:4]):
+            keys = [re.sub(r'[（(]注[^）)]*[）)]', '', norm_key(c)) for c in row]
+            ni = next((i for i, k in enumerate(keys) if k in ('物件名称', '物件名')), None)
+            bi = next((i for i, k in enumerate(keys) if BUILT_KEY.match(k)), None)
+            if ni is not None and bi is not None:
+                break
+        if ni is None or bi is None:
+            continue
+        for row in rows[hi + 1:]:
+            # 左端の列（用途など）が縦に結合されている行は列が少ない。右から数えて位置を合わせる
+            off = len(rows[hi]) - len(row)
+            if off < 0 or ni - off < 0:
+                continue
+            name, b = clean_name(row[ni - off]), row[bi - off]
+            # 「＜居住用不動産＞」のような区分の見出し行は物件ではない
+            if len(name) >= 2 and YEAR_RX.search(b) and not re.match(r'^[＜<【]', name):
+                out.setdefault(name, b)
     return out
 
 
@@ -259,8 +297,7 @@ def main():
     key = os.environ.get('EDINET_API_KEY')
     if not key:
         sys.exit('EDINET_API_KEY が未設定です。')
-    # reit_parser は同じディレクトリに置く
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.expanduser('~/Downloads'))
     import reit_parser as RP
 
     # 対象は住宅物件を持つ法人の最新有報(reit_properties.csv の doc_id)
@@ -284,7 +321,18 @@ def main():
         det, b, ev = {}, '不明', ''
         for h in htmls:
             soup = BeautifulSoup(h, 'lxml')
-            det.update(scan_details(soup))
+            for k, v in scan_details(soup).items():
+                if k in det and not det[k]['address'] and v['address']:
+                    det[k] = dict(v, built=v['built'] or det[k]['built'])
+                else:
+                    det.setdefault(k, v)
+                    if not det[k]['built'] and v['built']:
+                        det[k]['built'] = v['built']
+            for k, b in scan_built_columns(soup).items():
+                if k in det:
+                    det[k]['built'] = det[k]['built'] or b
+                else:
+                    det[k] = {'address': '', 'ml_type': '', 'ml_company': '', 'pm_company': '', 'units': '', 'built': b}
             if b == '不明':
                 b2, ev2 = scan_ml_basis(soup.get_text(' ', strip=True))
                 if b2 != '不明':

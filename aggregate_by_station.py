@@ -79,6 +79,13 @@ RENT_MAX_SHOW = 10
 # 賃料保証型のMLは外さない。NOIはREITが実際に受け取る収入なので保証型でも正しい。
 REIT_NEAR_MAX = 30
 
+# 1棟の簡易査定の事例に足す住宅REIT。駅から2km以内・近い順に最大 REIT_BLDG_MAX 件。
+# 2kmは1棟の成約事例を近隣駅から集める範囲と同じ。検証（共同住宅1棟の成約891件を当てる）で
+# ±20%以内が 39.6%→42.5%、±30%以内が 54.4%→60.5%、査定できる駅が 375→470 に増えた。
+# 築年が無い物件は入れない（築年で補正できないと古い建物ほど高く出る。1989年以前築で1.58倍）。
+REIT_BLDG_RADIUS = 2.0
+REIT_BLDG_MAX = 30
+
 TOKYO23 = ['千代田区','中央区','港区','新宿区','文京区','台東区','墨田区','江東区',
            '品川区','目黒区','大田区','世田谷区','渋谷区','中野区','杉並区','豊島区',
            '北区','荒川区','板橋区','練馬区','足立区','葛飾区','江戸川区']
@@ -273,7 +280,7 @@ def load_detail_master(path):
         with open(path, encoding='utf-8-sig') as f:
             for r in csv.DictReader(f):
                 v = {'address': r.get('address', ''), 'ml_class': r.get('ml_class', ''),
-                     'granularity': r.get('granularity', '')}
+                     'granularity': r.get('granularity', ''), 'built': r.get('built', '')}
                 out[(r['reit_name'], r['property_name'])] = v
                 out.setdefault((r['reit_name'], _norm_pname(r['property_name']) + '\x00norm'), v)
     except FileNotFoundError:
@@ -402,6 +409,17 @@ def build_reit_near(station_title, station_pt, reit_pool):
     return [p['item'] for _, p in d[:REIT_NEAR_MAX]]
 
 
+def build_reit_bldg(station_title, station_pt, bldg_pool):
+    """1棟の簡易査定用に、2km以内の住宅REITを近い順に最大 REIT_BLDG_MAX 件返す。
+    各件に駅からの距離(km)を付ける。並べ替えキーは build_reit_near と同じ。"""
+    if not station_pt:
+        return []
+    cand = [(geo_props.haversine(station_pt, p['pt']), p) for p in bldg_pool]
+    d = sorted((x for x in cand if x[0] <= REIT_BLDG_RADIUS),
+               key=lambda x: (x[0], x[1]['acc_rank'], stable_shuffle_key(station_title, x[1]['name'])))
+    return [dict(p['item'], km=round(dk, 2)) for dk, p in d[:REIT_BLDG_MAX]]
+
+
 def stable_shuffle_key(station_name, prop_name):
     """駅名+物件名のハッシュ。駅ごとに決定的だが物件間で擬似ランダムな順序を与える。"""
     h = hashlib.md5((station_name + '|' + prop_name).encode('utf-8')).hexdigest()
@@ -465,6 +483,9 @@ def main():
         d = (details.get((r.get('reit_name', ''), r.get('property_name', '')))
              or details.get((r.get('reit_name', ''), _norm_pname(r.get('property_name', '')) + '\x00norm')))
         r['ml_class'] = d['ml_class'] if d else ''
+        # 建築時期（「2004年12月」など）の年。1棟の査定事例に使う
+        m = re.search(r'((?:19|20)\d{2})年', (d or {}).get('built', '') or '')
+        r['_built'] = int(m.group(1)) if m else None
         if not d:
             continue
         # 明細の住所のほうが粒度が高いときだけ上書きする
@@ -521,6 +542,31 @@ def main():
                 '月坪賃料': rent_per_tsubo(r), '賃料時点': period_end_year(r.get('period')),
             },
         })
+
+    # ---- 1棟の簡易査定に足す住宅REIT ----
+    # 価格は鑑定評価額（今の価値。取得価格は取得時点の値）。面積は賃貸可能面積＝専有面積にあたる。
+    # 延床面積は開示している物件だけにあり、無い物件は表示側でレンタブル比（下）から出す。
+    bldg_pool = []
+    rb = []   # 賃貸可能面積 ÷ 延床面積（両方を開示している物件）
+    for r in props:
+        app, la_, gfa = to_float(r.get('appraisal_value')), to_float(r.get('leasable_area')), to_float(r.get('gross_floor_area'))
+        if la_ and gfa and 0.4 <= la_ / gfa <= 1.0:
+            rb.append(la_ / gfa)
+        if not app or not la_ or not r.get('_built'):
+            continue
+        la, lo, acc = geo.locate(r.get('location', ''), r.get('property_name', ''))
+        if la is None:
+            continue
+        bldg_pool.append({
+            'pt': (la, lo), 'acc_rank': {'丁目': 0, '町名': 1, '物件名': 2}.get(acc, 3),
+            'name': r.get('property_name', ''),
+            # 容量を抑えるため、使う項目だけ・無い値は持たない（全駅×30件で CSV が +1.9MB）
+            'item': {k: v for k, v in (('物件', r.get('property_name', '')), ('鑑定百万', app), ('賃貸m2', la_),
+                                       ('延床m2', gfa), ('土地m2', to_float(r.get('land_area'))), ('築年', r['_built']))
+                     if v not in (None, '')},
+        })
+    # レンタブル比。決め打ちせず、開示している物件の中央値を毎回出す（2026-09 実測 134件で0.85）
+    rentable_ratio = round(statistics.median(rb), 3) if len(rb) >= 20 else ''
 
     excluded_ml = []
     for r in props:
@@ -660,6 +706,7 @@ def main():
         # 賃料ブロックは区ではなく駅座標からの実距離で選ぶ(上の examples とは別系統)
         reit_near = build_reit_near(title, geo.station_point(title), reit_pool)
         near_caps = [e['NOI利回り'] for e in reit_near if e['NOI利回り'] is not None]
+        bldg_near = build_reit_bldg(title, geo.station_point(title), bldg_pool)
         rent_ex, rent_n, rent_r = build_rent_examples(
             title, geo.station_point(title), rent_pool)
         if rent_r is not None:
@@ -682,6 +729,9 @@ def main():
             # 0件の駅も必ず数値を入れる。取込は空セルを「既存値を保持」と扱うため、
             # 空にするとプラグインが「未取込」と「3km以内に0件」を区別できない。
             'reit_near_count': len(reit_near),
+            # 1棟の簡易査定の事例（2km以内の住宅REIT）。km は駅からの距離で、表示側で徒歩分にする
+            'reit_bldg_examples': json.dumps(bldg_near, ensure_ascii=False) if bldg_near else '',
+            'reit_rentable_ratio': rentable_ratio,
         })
 
     # 上書き前に旧版を読み、差分を出す(別途 diff を取らなくても変化に気づけるように)
@@ -696,7 +746,8 @@ def main():
     with open(args.out, 'w', newline='', encoding='utf-8-sig') as f:
         w = csv.DictWriter(f, fieldnames=['station', 'reit_cap_median', 'reit_count',
                                           'reit_examples', 'rent_examples', 'rent_count',
-                                          'reit_near_examples', 'reit_near_cap_median', 'reit_near_count'])
+                                          'reit_near_examples', 'reit_near_cap_median', 'reit_near_count',
+                                          'reit_bldg_examples', 'reit_rentable_ratio'])
         w.writeheader()
         w.writerows(out_rows)
 
