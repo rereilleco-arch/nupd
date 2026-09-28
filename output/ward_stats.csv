@@ -1,4 +1,4 @@
-muni,muni_code,station_n,mansion_n,mansion_tsubo_median,mansion_price_median,land_n,land_tsubo_median,house_n,house_price_median,isshu_n,isshu_bands_json,lp_n,lp_price_median,lp_comm_median,lp_yoy_median,mansion_bldg_n
+muni,muni_code,station_n,mansion_n,mansion_tsubo_median,mansion_price_median,land_n,land_tsubo_median,house_n,house_price_median,itto_n,itto_bands_json,lp_n,lp_price_median,lp_comm_median,lp_yoy_median,mansion_bldg_n
 あきる野市,13228,5,3,813732,16000000,41,310000,202,27000000,7,"[{""k"":""1億円未満"",""n"":5,""price"":53000000,""floor"":320},{""k"":""1〜3億円"",""n"":2,""price"":140000000,""floor"":930}]",0,,,,0
 三宅村,13381,0,0,,,1,9900,1,5000000,0,[],0,,,,0
 三鷹市,13204,3,281,2797203,58000000,43,1800000,309,65000000,13,"[{""k"":""1億円未満"",""n"":5,""price"":60000000,""floor"":155},{""k"":""1〜3億円"",""n"":7,""price"":240000000,""floor"":400},{""k"":""10億円以上"",""n"":1,""price"":1500000000,""floor"":""""}]",0,,,,7
