@@ -540,6 +540,8 @@ def main():
                 'NOI利回り': cap, '稼働率': to_float(r.get('occupancy')),
                 '町名': extract_town(r.get('location', '')),
                 '月坪賃料': rent_per_tsubo(r), '賃料時点': period_end_year(r.get('period')),
+                # 賃貸可能面積。REITページで専有坪単価（鑑定評価額÷賃貸可能面積）を出すのに使う
+                '賃貸m2': to_float(r.get('leasable_area')),
             },
         })
 
@@ -567,8 +569,9 @@ def main():
         })
     # レンタブル比。決め打ちせず、開示している物件の中央値を毎回出す（2026-09 実測 134件で0.85）
     rentable_ratio = round(statistics.median(rb), 3) if len(rb) >= 20 else ''
-    # NOI率（NOI ÷ 年間賃料）。1棟の収益還元（価格＝年間賃料×NOI率÷NOI利回り）に使う。
-    # NOI＝NOI利回り×鑑定評価額、年間賃料＝有報の月額賃料×12。東京の住宅REITの中央値（2026-09 実測 688件で0.748）
+    # 純収益率（純収益 ÷ 年間賃料）。1棟の収益還元（価格＝年間賃料×純収益率÷還元利回り）に使う。
+    # cap_rate は鑑定評価の直接還元利回りで、NOIではなく純収益（NCF）を還元する利回り。
+    # 純収益＝還元利回り×鑑定評価額、年間賃料＝有報の月額賃料×12。東京の住宅REITの中央値（2026-09 実測 688件で0.748）
     nr = []
     for r in props:
         cap, app, rm = to_float(r.get('cap_rate')), to_float(r.get('appraisal_value')), to_float(r.get('rent_monthly_mn'))
@@ -576,7 +579,7 @@ def main():
             x = cap / 100 * app / (rm * 12)
             if 0.3 < x < 1.0:
                 nr.append(x)
-    noi_ratio = round(statistics.median(nr), 3) if len(nr) >= 20 else ''
+    ncf_ratio = round(statistics.median(nr), 3) if len(nr) >= 20 else ''
 
     excluded_ml = []
     for r in props:
@@ -742,7 +745,7 @@ def main():
             # 1棟の簡易査定の事例（2km以内の住宅REIT）。km は駅からの距離で、表示側で徒歩分にする
             'reit_bldg_examples': json.dumps(bldg_near, ensure_ascii=False) if bldg_near else '',
             'reit_rentable_ratio': rentable_ratio,
-            'reit_noi_ratio': noi_ratio,
+            'reit_ncf_ratio': ncf_ratio,
         })
 
     # 上書き前に旧版を読み、差分を出す(別途 diff を取らなくても変化に気づけるように)
@@ -758,7 +761,7 @@ def main():
         w = csv.DictWriter(f, fieldnames=['station', 'reit_cap_median', 'reit_count',
                                           'reit_examples', 'rent_examples', 'rent_count',
                                           'reit_near_examples', 'reit_near_cap_median', 'reit_near_count',
-                                          'reit_bldg_examples', 'reit_rentable_ratio', 'reit_noi_ratio'])
+                                          'reit_bldg_examples', 'reit_rentable_ratio', 'reit_ncf_ratio'])
         w.writeheader()
         w.writerows(out_rows)
 
