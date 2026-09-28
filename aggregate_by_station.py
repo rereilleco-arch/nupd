@@ -567,6 +567,16 @@ def main():
         })
     # レンタブル比。決め打ちせず、開示している物件の中央値を毎回出す（2026-09 実測 134件で0.85）
     rentable_ratio = round(statistics.median(rb), 3) if len(rb) >= 20 else ''
+    # NOI率（NOI ÷ 年間賃料）。1棟の収益還元（価格＝年間賃料×NOI率÷NOI利回り）に使う。
+    # NOI＝NOI利回り×鑑定評価額、年間賃料＝有報の月額賃料×12。東京の住宅REITの中央値（2026-09 実測 688件で0.748）
+    nr = []
+    for r in props:
+        cap, app, rm = to_float(r.get('cap_rate')), to_float(r.get('appraisal_value')), to_float(r.get('rent_monthly_mn'))
+        if cap and app and rm and extract_muni(r.get('location')):
+            x = cap / 100 * app / (rm * 12)
+            if 0.3 < x < 1.0:
+                nr.append(x)
+    noi_ratio = round(statistics.median(nr), 3) if len(nr) >= 20 else ''
 
     excluded_ml = []
     for r in props:
@@ -732,6 +742,7 @@ def main():
             # 1棟の簡易査定の事例（2km以内の住宅REIT）。km は駅からの距離で、表示側で徒歩分にする
             'reit_bldg_examples': json.dumps(bldg_near, ensure_ascii=False) if bldg_near else '',
             'reit_rentable_ratio': rentable_ratio,
+            'reit_noi_ratio': noi_ratio,
         })
 
     # 上書き前に旧版を読み、差分を出す(別途 diff を取らなくても変化に気づけるように)
@@ -747,7 +758,7 @@ def main():
         w = csv.DictWriter(f, fieldnames=['station', 'reit_cap_median', 'reit_count',
                                           'reit_examples', 'rent_examples', 'rent_count',
                                           'reit_near_examples', 'reit_near_cap_median', 'reit_near_count',
-                                          'reit_bldg_examples', 'reit_rentable_ratio'])
+                                          'reit_bldg_examples', 'reit_rentable_ratio', 'reit_noi_ratio'])
         w.writeheader()
         w.writerows(out_rows)
 
