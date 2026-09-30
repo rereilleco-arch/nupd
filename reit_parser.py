@@ -152,7 +152,16 @@ COLUMN_PATTERNS = [
     ('location',         r'所在地|所在場所|所在|住所|地番'),
     # 所在地列を持たない法人(オフィスREIT等)は「地域区分」を持つことがあるので拾う
     ('region',           r'地域区分|エリア|地域'),
-    ('rental_income',    r'総賃貸収入|賃貸収入|賃貸事業収入'),
+    # 【順序が重要】「賃料比率」「対総賃料収入比率」「賃料改定」は賃料の語を含むが金額ではない。
+    # map_columns は used で列の二重取りを防ぐので、先にここで吸収して捨てる。
+    # これを入れずに rental_income の語彙を広げると、比率(%)を賃料として取り込む。
+    ('_rent_noise',      r'賃料比率|対総賃料収入比率|賃料改定|賃料単価|坪単価'),
+    # 収入列の語彙は53法人の有報を実測して決めた(2026-09)。既存の
+    # 「総賃貸収入|賃貸収入|賃貸事業収入」に当たるのは53法人中2法人だけで、
+    # 主流は「年間賃料」(19法人)と「総賃料収入」(13法人)だった。
+    ('rental_income',    r'(総賃貸事業収入|総賃貸収入|賃貸事業収入|賃貸事業収益|賃貸収入'
+                         r'|総賃料収入|年間賃料収入|月額賃料収入|期末年間契約賃料|契約賃料合計'
+                         r'|当期実績賃料|年間賃料|月額賃料|賃料)'),
     ('land_area',        r'土地面積|敷地面積'),
     ('gross_floor_area', r'延床面積|延べ床面積'),
     ('leasable_area',    r'総賃貸可能面積|賃貸可能面積'),
@@ -167,6 +176,32 @@ COLUMN_PATTERNS = [
 # これをやらないと日本ビルファンドの金額が1000倍になる(致命的)。
 
 MONEY_FIELDS = ('acquisition_price', 'book_value', 'appraisal_value', 'rental_income')
+
+# ---------------------------------------------------------------- 期間の正規化
+# 収入列は法人により集計期間が違う(年間/月額/当期)。単位(千円・百万円)は
+# detect_unit_scale が百万円に揃えるが、期間は揃わない。混ざると12倍ずれる。
+# rental_income は原文の期間のまま残し、月額換算を rent_monthly_mn に分けて持つ。
+# 「当期」は決算期の長さ(多くは6ヶ月だが12ヶ月の法人もある)が表から読めないため
+# 換算しない。推定で埋めるより空のほうが安全。
+def detect_rent_basis(header_text):
+    h = str(header_text or '')
+    if re.search(r'月額|月間|1ヶ月|１ヶ月', h):
+        return 'monthly'
+    if re.search(r'年間|年額|期末年間', h):
+        return 'annual'
+    if re.search(r'当期|期中|前期', h):
+        return 'period'
+    return ''
+
+def to_monthly(value_mn, basis):
+    """百万円の金額を月額(百万円)に換算する。換算できないものは None。"""
+    if value_mn is None or not basis:
+        return None
+    if basis == 'monthly':
+        return value_mn
+    if basis == 'annual':
+        return value_mn / 12.0
+    return None
 
 def detect_unit_scale(header_text):
     """ヘッダ文字列 -> 百万円に直すための倍率。
@@ -476,6 +511,13 @@ def _read_table(matrix, header, mapping, data_start, context_text=None):
                         continue
                     v = v * sc
                 rec[key] = v
+                if key == 'rental_income':
+                    # ヘッダから期間を読み、月額換算できるものだけ別列に持つ
+                    basis = detect_rent_basis(header[ci] if ci < len(header) else '')
+                    rec['rent_basis'] = basis
+                    m = to_monthly(v, basis)
+                    if m is not None:
+                        rec['rent_monthly_mn'] = round(m, 4)
             elif key == 'use_type':
                 # 原文は必ず残し、用途語彙に無い値は use_type に採用しない。
                 # (列の取り違えが header 側の修正をすり抜けた場合の最後の砦)
