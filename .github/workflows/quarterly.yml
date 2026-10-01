@@ -97,16 +97,17 @@ jobs:
             --coords input/station_coords.csv \
             --out output/station_population.csv
 
+      # ===== 駅ごとの公示地価・基準地価 =====
+      # 国土数値情報 L01(公示)・L02(基準) の最新版を自動DL。最寄駅名と距離が元データに入っている。
+      # 区の集計(Ward stats)が l01/ の公示地価を読むので、必ずこちらを先に走らせる。
+      # （逆順だと区の集計が地価0件で出る。2026-09-28 の出力で全59市区町村が0件だった）
+      - name: Station land price points
+        run: python3 land_price_points.py --out output/station_land_points.csv
+
       # ===== 区市町村の集計（区ページ /ward/ の元データ）=====
       # 取引CSVとL01から作る。APIを使わないので失敗要因が少ない。
       - name: Ward stats
         run: python3 ward_stats.py --out output/ward_stats.csv
-
-      # ===== 駅ごとの公示地価 =====
-      # 国土数値情報L01(GeoJSON)を自動DL。最寄駅名と距離が元データに入っている。
-      # 年1回の更新で足りるが、四半期に回しても害はない。
-      - name: Station land price points
-        run: python3 land_price_points.py --out output/station_land_points.csv
 
       # ===== 棟データ =====
       # とどまる登録簿・中央区認定はHTMLから自動取得。
