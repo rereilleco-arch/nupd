@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""国土数値情報の地価公示(L01)から、駅ごとの公示地価を集計する。
+"""国土数値情報の地価公示(L01)と都道府県地価調査(L02)から、駅ごとの地価を集計する。
 
   python3 land_price_points.py --out output/station_land_points.csv
 
@@ -17,20 +17,23 @@
 出力（1行=1駅）
   station, pt_n, price_median, yoy_median,
   resi_n, resi_price_median, comm_n, comm_price_median,   … 住宅系/商業系
-  points_json  [{addr,use,price,yoy,dist,far}] 距離順に最大8地点
+  points_json  [{addr,use,price,tsubo,yoy,dist,far,kind,asof}] 距離順に最大10地点（kind=公示/基準）
 """
 import argparse, csv, glob, json, os, re, statistics as st, sys, unicodedata, urllib.request, zipfile, io as _io
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.environ.get('NOITAS_DIR') or (os.path.dirname(HERE) if os.path.basename(HERE) == '_pipeline' else HERE)
-# 東京都(13)。年度が変わったら L01-25 などに上げる
-SRC = 'https://nlftp.mlit.go.jp/ksj/gml/data/L01/L01-24/L01-24_13_GML.zip'
-
-# L01の属性コード
-F_PRICE, F_YOY = 'L01_008', 'L01_009'      # 円/㎡、前年比%
-F_ADDR = 'L01_025'                          # 所在地
-F_STATION, F_DIST = 'L01_048', 'L01_050'    # 最寄駅名、駅からの距離m
-F_ZONE, F_FAR = 'L01_051', 'L01_058'        # 用途地域、指定容積率%
+# 東京都(13)。地価公示(L01・1月1日時点)と都道府県地価調査(L02・7月1日時点)の両方を読む。
+# 年は固定しない。以前は L01-24 を固定で読み、2025・2026年版が出たあとも
+# 2年前の地価を「直近1年」として出し続けていた。毎回、今年から遡って最初にある版を使う。
+KINDS = {
+    #       種類    国土数値情報の区分  属性コード（価格円/㎡, 前年比%, 所在地, 最寄駅, 距離m, 用途地域, 指定容積率, 調査年）
+    'L01': ('公示', dict(price='L01_008', yoy='L01_009', addr='L01_025', station='L01_048',
+                        dist='L01_050', zone='L01_051', far='L01_058', year='L01_007')),
+    'L02': ('基準', dict(price='L02_006', yoy='L02_007', addr='L02_022', station='L02_045',
+                        dist='L02_046', zone='L02_047', far='L02_052', year='L02_005')),
+}
+URL = 'https://nlftp.mlit.go.jp/ksj/gml/data/{k}/{k}-{yy:02d}/{k}-{yy:02d}_13_GML.zip'
 TSUBO = 3.305785
 
 # 用途地域の略称。住宅系か商業系かの判定に使う
@@ -93,19 +96,41 @@ def num(v):
         return None
 
 
-def fetch(dst):
-    """未取得ならダウンロードして展開し、geojsonのパスを返す"""
-    g = glob.glob(os.path.join(dst, '*', '*.geojson'))
-    if g:
-        return g[0]
-    os.makedirs(dst, exist_ok=True)
-    req = urllib.request.Request(SRC, headers={
-        'User-Agent': 'Mozilla/5.0',
-        'Referer': 'https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L01-2024.html'})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        zipfile.ZipFile(_io.BytesIO(r.read())).extractall(dst)
-    print(f'元データを取得: {SRC}')
-    return glob.glob(os.path.join(dst, '*', '*.geojson'))[0]
+def _get(url, head=False):
+    req = urllib.request.Request(url, method='HEAD' if head else 'GET', headers={
+        'User-Agent': 'Mozilla/5.0', 'Referer': 'https://nlftp.mlit.go.jp/ksj/'})
+    return urllib.request.urlopen(req, timeout=120)
+
+
+def latest_url(kind):
+    """今年から5年遡り、最初に公開されている版のURLを返す"""
+    import datetime
+    y = datetime.date.today().year % 100
+    for yy in range(y, y - 5, -1):
+        url = URL.format(k=kind, yy=yy)
+        try:
+            with _get(url, head=True) as r:
+                if r.status == 200 and int(r.headers.get('Content-Length') or 0) > 100000:
+                    return url
+        except Exception:
+            continue
+    sys.exit(f'中止: {kind} の公開版が見つかりません（取得元の障害を疑ってください）。')
+
+
+def fetch(dst, kind):
+    """最新版をダウンロードして展開し、geojsonのパスを返す。
+    展開先は版ごとに分ける（古い版が残っていても新しい版を読む）"""
+    url = latest_url(kind)
+    ver = os.path.basename(url).split('_')[0]           # 例 L01-26
+    d = os.path.join(dst, ver)
+    g = glob.glob(os.path.join(d, '**', '*.geojson'), recursive=True)
+    if not g:
+        os.makedirs(d, exist_ok=True)
+        with _get(url) as r:
+            zipfile.ZipFile(_io.BytesIO(r.read())).extractall(d)
+        print(f'元データを取得: {url}')
+        g = glob.glob(os.path.join(d, '**', '*.geojson'), recursive=True)
+    return g[0]
 
 
 def med(v):
@@ -135,7 +160,7 @@ def guard(out, path, minimum=1, ratio=0.8):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--cache', default=os.path.join(HERE, 'l01'))
+    ap.add_argument('--cache', default=os.path.join(HERE, 'l01'))   # ward_stats.py も同じ場所の L01 を読む
     ap.add_argument('--out', default=os.path.join(BASE, 'station_land_points.csv'))
     ap.add_argument('--max-dist', type=int, default=1500, help='駅からの距離の上限m')
     ap.add_argument('--stations', default='', help='サイトの駅一覧。出力の駅名をこれに揃える')
@@ -147,34 +172,42 @@ def main():
     site = site_stations(sf)
     print(f'駅一覧: {sf}（{sum(len(v) for v in site.values())}駅）')
 
-    ft = json.load(open(fetch(a.cache), encoding='utf-8'))['features']
-    by, unmatched = {}, {}
-    for x in ft:
-        p = x['properties']
-        stn = str(p.get(F_STATION) or '').strip()
-        price = num(p.get(F_PRICE))
-        dist = num(p.get(F_DIST))
-        if not stn or stn == '_' or not price:
-            continue
-        if dist is not None and dist > a.max_dist:
-            continue
-        # サイトの正式名に寄せる。無ければ捨てる（都県外・島嶼部のバス停が混ざるため）
-        names = site.get(skey(stn)) if site else [stn + '駅']
-        if not names:
-            unmatched.setdefault(stn, 0)
-            unmatched[stn] += 1
-            continue
-        pt = {
-            'addr': re.sub(r'\s+', '', str(p.get(F_ADDR) or '')),
-            'use': str(p.get(F_ZONE) or '').strip(),
-            'price': int(price),
-            'tsubo': int(round(price * TSUBO)),
-            'yoy': num(p.get(F_YOY)),
-            'dist': int(dist) if dist is not None else None,
-            'far': num(p.get(F_FAR)),
-        }
-        for nm in names:
-            by.setdefault(nm, []).append(dict(pt))
+    by, unmatched, n_ft = {}, {}, 0
+    for kind, (label, F) in KINDS.items():
+        # 公示は ward_stats.py と共有する l01/ に、基準は l02/ に置く
+        cache = a.cache if kind == 'L01' else os.path.join(os.path.dirname(a.cache), 'l02')
+        ft = json.load(open(fetch(cache, kind), encoding='utf-8'))['features']
+        n_ft += len(ft)
+        for x in ft:
+            p = x['properties']
+            stn = str(p.get(F['station']) or '').strip()
+            price = num(p.get(F['price']))
+            dist = num(p.get(F['dist']))
+            if not stn or stn == '_' or not price:
+                continue
+            if dist is not None and dist > a.max_dist:
+                continue
+            # サイトの正式名に寄せる。無ければ捨てる（都県外・島嶼部のバス停が混ざるため）
+            names = site.get(skey(stn)) if site else [stn + '駅']
+            if not names:
+                unmatched.setdefault(stn, 0)
+                unmatched[stn] += 1
+                continue
+            yr = str(p.get(F['year']) or '')
+            pt = {
+                'addr': re.sub(r'\s+', '', str(p.get(F['addr']) or '')),
+                'use': str(p.get(F['zone']) or '').strip(),
+                'price': int(price),
+                'tsubo': int(round(price * TSUBO)),
+                'yoy': num(p.get(F['yoy'])),
+                'dist': int(dist) if dist is not None else None,
+                'far': num(p.get(F['far'])),
+                # 種類と時点。公示は1月1日、基準は7月1日時点の価格
+                'kind': label,
+                'asof': f"{yr}-01-01" if kind == 'L01' else f"{yr}-07-01",
+            }
+            for nm in names:
+                by.setdefault(nm, []).append(dict(pt))
 
     rows = []
     for stn, pts in by.items():
@@ -190,7 +223,7 @@ def main():
             'resi_price_median': int(med([d['tsubo'] for d in resi])) if resi else '',
             'comm_n': len(comm),
             'comm_price_median': int(med([d['tsubo'] for d in comm])) if comm else '',
-            'points_json': json.dumps(pts[:8], ensure_ascii=False, separators=(',', ':')),
+            'points_json': json.dumps(pts[:10], ensure_ascii=False, separators=(',', ':')),
         })
     rows.sort(key=lambda r: r['station'])
 
@@ -202,7 +235,7 @@ def main():
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader(); w.writerows(rows)
 
-    print(f'地点 {len(ft):,} → {len(rows)}駅（駅から{a.max_dist}m以内）→ {a.out}')
+    print(f'地点 {n_ft:,}（公示＋基準） → {len(rows)}駅（駅から{a.max_dist}m以内）→ {a.out}')
     v = sorted(rows, key=lambda r: -r['price_median'])
     print('  坪単価上位:', [(r['station'], f"{r['price_median']/10000:,.0f}万/坪", f"n={r['pt_n']}") for r in v[:4]])
     if site:

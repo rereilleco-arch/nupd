@@ -16,6 +16,7 @@
 出力 ward_stats.csv (1行=1市区町村)
   muni, muni_code, station_n
   mansion_n, mansion_tsubo_median, mansion_price_median      … 中古マンション
+  mansion_price_trimmean                                     … 同・平均（駅ページと同じ定義。区ランキング用）
   land_n, land_tsubo_median                                  … 土地
   house_n, house_price_median                                … 土地建物(戸建等)
   itto_n, itto_bands_json                                  … 1棟(共同住宅)の価格帯別
@@ -35,6 +36,25 @@ TSUBO = 3.305785
 # 同じローマ字で別の意味を指すと、結合した瞬間に静かに混ざる。
 BANDS = [(0, 1e8, '1億円未満'), (1e8, 3e8, '1〜3億円'),
          (3e8, 10e8, '3〜10億円'), (10e8, float('inf'), '10億円以上')]
+
+
+# 駅ページ（station_pipeline.py）と同じ「事情あり」の除外と外れ値除外の平均。
+# 区の平均を駅の平均と同じ定義にしておかないと、区ランキングと駅ページの数字が食い違う。
+BAD = ['調停・競売等', '関係者間取引', '瑕疵有りの可能性', 'その他事情有り']
+
+
+def trimmean(v):
+    """Tukeyフェンス(1.5×IQR)の外だけを除いた平均。station_pipeline.trimmean と同じ"""
+    s = sorted(x for x in v if x)
+    n = len(s)
+    if n == 0:
+        return ''
+    if n < 4:
+        return int(round(sum(s) / n))
+    q = st.quantiles(s, n=4, method='inclusive')
+    lo, hi = q[0] - 1.5 * (q[2] - q[0]), q[2] + 1.5 * (q[2] - q[0])
+    t = [x for x in s if lo <= x <= hi]
+    return int(round(sum(t) / len(t))) if t else int(round(sum(s) / n))
 
 
 def num(v):
@@ -133,9 +153,11 @@ def main():
 
     # 公示地価。L01は市区町村コードを持つので、駅を経由せず直接集計できる
     lp = {}
-    g = glob.glob(os.path.join(a.l01, '*', '*.geojson'))
+    # land_price_points.py が l01/<版>/ に最新版を置く。版が複数あれば新しいほう（L01-26 > L01-24）
+    g = sorted(glob.glob(os.path.join(a.l01, '**', 'L01-*.geojson'), recursive=True))
     if g:
-        for ft in json.load(open(g[0], encoding='utf-8'))['features']:
+        print(f'公示地価: {g[-1]}')
+        for ft in json.load(open(g[-1], encoding='utf-8'))['features']:
             q = ft['properties']
             price, code = num(q.get('L01_008')), str(q.get('L01_001') or '')
             if not price or not code:
@@ -165,6 +187,8 @@ def main():
             'mansion_n': len(man),
             'mansion_tsubo_median': med([x for x in (tsubo(r) for r in man) if x]),
             'mansion_price_median': med([x for x in (num(r.get('取引価格（総額）')) for r in man) if x]),
+            'mansion_price_trimmean': trimmean([num(r.get('取引価格（総額）')) for r in man
+                                                if not any(k in str(r.get('取引の事情等') or '') for k in BAD)]),
             'land_n': len(land),
             'land_tsubo_median': med([x for x in (num(r.get('坪単価')) for r in land) if x]),
             'house_n': len(house),
