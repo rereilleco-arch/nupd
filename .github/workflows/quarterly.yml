@@ -86,7 +86,11 @@ jobs:
           python3 edinet_latest_yuho.py --days 420 --out edinet_latest_yuho.csv
           python3 run_reits.py --yuho edinet_latest_yuho.csv --out output/reit_properties.csv --report output/reit_parse_report.csv
           python3 reit_detail_scan.py --props output/reit_properties.csv --out-dir .
-          python3 aggregate_by_station.py --in output/reit_properties.csv --stations input/tokyost_1.csv --neighbors station_neighbors.csv --details reit_detail_locations.csv --out output/reit_by_station.csv
+          # 公式サイトの物件データから番地までの住所（野村MFは座標も）。積水・KDX・野村MFは
+          # 有報に町名・区までしか書かないため。取れる件数が2割以上減ったら前回の値を残して止まる
+          python3 fetch_official_addresses.py --out reit_official_addresses.csv || echo "::warning::公式サイトの住所の取得に失敗。前回の値で続行"
+          # --geocode: 番地まである住所の位置。保存済みを使い、新しい住所だけ国土地理院に問い合わせる
+          python3 aggregate_by_station.py --in output/reit_properties.csv --stations input/tokyost_1.csv --neighbors station_neighbors.csv --details reit_detail_locations.csv --official reit_official_addresses.csv --geocode reit_geocode.csv --out output/reit_by_station.csv
           python3 aggregate_by_company.py --in output/reit_properties.csv --names reit_names.json --out output/reit_by_company.csv
 
       # ===== 徒歩圏の居住人口 =====
@@ -132,7 +136,7 @@ jobs:
         run: |
           git config user.name  "noitas-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add output/ward_stats.csv output/station_land_points.csv output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json output/muni_price_trends.csv output/station_population.csv output/mansions.csv output/station_yearly.csv
+          git add reit_official_addresses.csv reit_geocode.csv output/ward_stats.csv output/station_land_points.csv output/station_prices.csv output/fudosan_enrichment.csv output/reit_by_station.csv output/reit_by_company.csv output/reit_properties.csv output/reit_parse_report.csv output/fudosan_muni_cache.json output/muni_price_trends.csv output/station_population.csv output/mansions.csv output/station_yearly.csv
           git add -A input/mlit_quarters
           git commit -m "chore: quarterly data update" || echo "no changes"
           git pull --rebase --autostash origin main || true
