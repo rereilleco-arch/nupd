@@ -248,6 +248,15 @@ def _norm_pname(s):
     return re.sub(r'[\s\u3000]+', '', s)
 
 
+def _official_key(name):
+    """公式サイトと有報の物件名の照合キー。
+
+    空白・全角半角に加え、積水ハウス・リートは「Ⅱ」を小文字のエル2つ「ll」で書くので
+    （エスティメゾン恵比寿ll）、末尾の ll/LL を II にそろえる。"""
+    s = _norm_pname(name).upper()
+    return re.sub(r'LL$', 'II', s)
+
+
 def load_location_master(path):
     """reit_locations.csv(公式サイト由来の恒久データ)を読む。
 
@@ -438,6 +447,12 @@ def main():
     ap.add_argument('--details', default='reit_detail_locations.csv',
                     help='有報の個別物件明細から取った住所とML種別(reit_detail_scan.py の出力)。'
                          '物件表の所在地より粒度が高いので、あれば優先する。無ければ使わない。')
+    ap.add_argument('--official', default='reit_official_addresses.csv',
+                    help='REIT公式サイトの物件データから取った番地までの住所と座標(fetch_official_addresses.py の出力)。'
+                         '有報・明細より細かいときだけ上書きする。無ければ使わない。')
+    ap.add_argument('--geocode', default='reit_geocode.csv',
+                    help='番地まである住所の位置の保存ファイル。無い住所は国土地理院に問い合わせて足す。')
+    ap.add_argument('--no-network', action='store_true', help='国土地理院に問い合わせない(保存済みの位置だけ使う)')
     ap.add_argument('--out', default='reit_by_station.csv')
     ap.add_argument('--limit', type=int, default=0,
                     help='駅ごとの事例保持件数(0=全件)。表示件数はプラグイン側で絞るため既定は全件。')
@@ -494,6 +509,35 @@ def main():
             r['location_source'] = '有報明細'
             filled_from_detail += 1
 
+    # REIT公式サイトの番地までの住所で上書きする。
+    #
+    # 積水ハウス・リートは有報に「東京都品川区上大崎」と町名まで、KDXは区までしか書かない。
+    # reit_locations.csv(公式由来)は有報の所在地が「空」のときしか使っていなかったので、
+    # 町名まで書いてある法人には番地があっても効かなかった。細かいときは上書きする。
+    # 公式が座標を持つ法人(野村MF)は、その座標を住所の位置として登録する。
+    geocoder = geo_props.Geocoder(args.geocode, network=not args.no_network)
+    official = {}
+    try:
+        with open(args.official, encoding='utf-8-sig') as f:
+            for o in csv.DictReader(f):
+                official[(o['reit_name'], _official_key(o['property_name']))] = o
+                if o.get('lat') and o.get('lon'):
+                    geocoder.put(o['address'], o['lat'], o['lon'], '公式座標', o.get('source', ''))
+    except FileNotFoundError:
+        pass
+    filled_from_official = 0
+    for r in props:
+        o = official.get((r.get('reit_name', ''), _official_key(r.get('property_name', ''))))
+        if not o:
+            continue
+        cur = r.get('location', '')
+        if detail_rank(o['address']) > detail_rank(cur) or (
+                geo_props.BANCHI.search(o['address']) and not geo_props.BANCHI.search(cur)):
+            r['location'] = o['address']
+            r['location_source'] = 'REIT公式(番地)'
+            filled_from_official += 1
+    print(f"公式サイトの番地で上書き: {filled_from_official}件")
+
     # 脱落の内訳を数える。住宅と判定されても location が空だと extract_muni() が
     # None を返し、その物件は駅ページに一切出ない。件数が急に減った場合に
     # パース側の劣化なのかを、このログだけで切り分けられるようにする。
@@ -521,7 +565,7 @@ def main():
     # ---- 賃料ブロック用の座標付け ----
     # 対象は「月坪賃料が出る住宅物件」だけ。鑑定評価額の有無は問わない
     # (賃料ブロックは利回り事例ではないため)。
-    geo = geo_props.Geo(extract_muni=extract_muni)
+    geo = geo_props.Geo(extract_muni=extract_muni, geocoder=geocoder)
     rent_pool, geo_acc = [], {}
     reit_pool = []   # REITページ用（cap・鑑定評価額・座標がそろう住宅物件。ML種別は問わない）
     for r in props:
@@ -532,7 +576,7 @@ def main():
         if la is None:
             continue
         reit_pool.append({
-            'pt': (la, lo), 'acc_rank': {'丁目': 0, '町名': 1, '物件名': 2}.get(acc, 3),
+            'pt': (la, lo), 'acc_rank': {'番地': 0, '丁目': 1, '町名': 2, '物件名': 3}.get(acc, 4),
             'name': r.get('property_name', ''),
             'item': {
                 '物件': r.get('property_name', ''), 'REIT': r.get('reit_name', ''),
@@ -560,11 +604,13 @@ def main():
         if la is None:
             continue
         bldg_pool.append({
-            'pt': (la, lo), 'acc_rank': {'丁目': 0, '町名': 1, '物件名': 2}.get(acc, 3),
+            'pt': (la, lo), 'acc_rank': {'番地': 0, '丁目': 1, '町名': 2, '物件名': 3}.get(acc, 4),
             'name': r.get('property_name', ''),
             # 容量を抑えるため、使う項目だけ・無い値は持たない（全駅×30件で CSV が +1.9MB）
             'item': {k: v for k, v in (('物件', r.get('property_name', '')), ('鑑定百万', app), ('賃貸m2', la_),
-                                       ('延床m2', gfa), ('土地m2', to_float(r.get('land_area'))), ('築年', r['_built']))
+                                       ('延床m2', gfa), ('土地m2', to_float(r.get('land_area'))), ('築年', r['_built']),
+                                       # 位置の精度。番地で測れたものは持たない（容量のため）。表示側は有れば「概算」と注記する
+                                       ('位置', None if acc == '番地' else acc))
                      if v not in (None, '')},
         })
     # レンタブル比。決め打ちせず、開示している物件の中央値を毎回出す（2026-09 実測 134件で0.85）
@@ -612,7 +658,7 @@ def main():
             'pt': (la, lo),
             'acc': acc,
             # 精度の順位。同じ距離に並んだとき、住所で引けた物件を物件名推定より前に出す。
-            'acc_rank': {'丁目': 0, '町名': 1, '物件名': 2}.get(acc, 3),
+            'acc_rank': {'番地': 0, '丁目': 1, '町名': 2, '物件名': 3}.get(acc, 4),
             'rent': rt,
             'name': r.get('property_name', ''),
             'reit': r.get('reit_name', ''),
@@ -775,8 +821,10 @@ def main():
           f"(明細 {len(details)//2}件)")
     print(f"  脱落: location欄が空 {drop_no_loc}件 / 東京都外 {drop_other_pref}件")
 
+    geocoder.save()
+    print(f"\n[位置] 番地の位置 保存 {len(geocoder.rows)}件（今回 国土地理院に問い合わせ {geocoder.new}件・失敗 {geocoder.fail}件）→ {args.geocode}")
     print(f"\n[賃料ブロック] 月坪賃料が出る物件 {sum(geo_acc.values())}件 の座標づけ")
-    for k in ('丁目', '町名', '物件名', 'なし'):
+    for k in ('番地', '丁目', '町名', '物件名', 'なし'):
         if geo_acc.get(k):
             print(f"   {k:<6}{geo_acc[k]:>5}件" + ('   ← 座標なし=採用しない' if k == 'なし' else ''))
     print(f"   採用 {len(rent_pool)}件"

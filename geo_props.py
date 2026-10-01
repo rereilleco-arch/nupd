@@ -10,6 +10,10 @@
   実測で21%低く出ていた。区という粒度そのものが原因なので、実距離に置き換える。
 
 座標の求め方(精度の高い順)
+  0) 番地まで住所がある     → その番地の位置         精度 '番地'
+     公式が座標を持つ法人(野村MF)はその座標、ほかは国土地理院の住所検索で出す。
+     出した座標は reit_geocode.csv に保存し、次回からは新しい住所だけを問い合わせる。
+     丁目の重心との差は中央値85m・最大375m、公式座標との差は中央値13m(2026-10 実測)。
   1) 丁目まで住所がある     → 町丁目の重心          精度 '丁目'
   2) 町名まで住所がある     → その町(全丁目)の重心   精度 '町名'
   3) 区しか分からない       → 物件名に含まれる同区の町名/駅名の座標  精度 '物件名'
@@ -66,6 +70,74 @@ def _first(paths, label):
     raise FileNotFoundError(f'{label} が見つかりません。探した場所: ' + ' / '.join(paths))
 
 
+BANCHI = re.compile(r'[0-9０-９]+\s*(番|号|[-－‐ー])')   # 番地まである住所か
+
+
+def addr_key(a):
+    """住所の照合キー。空白と全角半角の違いを潰す"""
+    import unicodedata
+    return re.sub(r'[\s\u3000]+', '', unicodedata.normalize('NFKC', str(a or '')))
+
+
+class Geocoder:
+    """番地まである住所 -> (lat, lon)。
+
+    保存ファイル(reit_geocode.csv: address,lat,lon,level,source)を先に引き、無ければ
+    国土地理院の住所検索に問い合わせて保存する。住所は変わらないので1度引けば使い回せる。
+    問い合わせに失敗したら None を返す（呼び出し側は従来の丁目重心に戻る）。"""
+    URL = 'https://msearch.gsi.go.jp/address-search/AddressSearch?q='
+    COLS = ['address', 'lat', 'lon', 'level', 'source']
+
+    def __init__(self, path='reit_geocode.csv', network=True, max_new=3000):
+        self.path, self.network, self.max_new = path, network, max_new
+        self.rows, self.new, self.fail = {}, 0, 0
+        if path and os.path.exists(path):
+            with open(path, encoding='utf-8-sig') as f:
+                for r in csv.DictReader(f):
+                    self.rows[addr_key(r['address'])] = r
+
+    def put(self, address, lat, lon, level, source):
+        """公式の座標など、問い合わせずに分かっている位置を入れる（国土地理院より優先）"""
+        self.rows[addr_key(address)] = {'address': address, 'lat': str(lat), 'lon': str(lon),
+                                        'level': level, 'source': source}
+
+    def lookup(self, address):
+        k = addr_key(address)
+        r = self.rows.get(k)
+        if r:
+            return (float(r['lat']), float(r['lon'])) if r.get('lat') else None
+        if not self.network or self.new >= self.max_new or self.fail >= 20:
+            return None
+        import json, time, urllib.parse, urllib.request
+        try:
+            q = re.split(r'[（(、,]', k)[0]
+            req = urllib.request.Request(self.URL + urllib.parse.quote(q),
+                                         headers={'User-Agent': 'noitas data pipeline'})
+            with urllib.request.urlopen(req, timeout=20) as res:
+                js = json.loads(res.read().decode('utf-8') or '[]')
+            time.sleep(0.25)                      # 相手に負担をかけない間隔
+        except Exception:
+            self.fail += 1
+            return None
+        self.new += 1
+        if not js:
+            self.rows[k] = {'address': address, 'lat': '', 'lon': '', 'level': '見つからない', 'source': '国土地理院'}
+            return None
+        x, y = js[0]['geometry']['coordinates']
+        self.rows[k] = {'address': address, 'lat': f'{y:.6f}', 'lon': f'{x:.6f}',
+                        'level': js[0]['properties'].get('title', ''), 'source': '国土地理院'}
+        return (y, x)
+
+    def save(self):
+        if not self.path:
+            return
+        with open(self.path, 'w', newline='', encoding='utf-8') as f:
+            w = csv.DictWriter(f, fieldnames=self.COLS)
+            w.writeheader()
+            for r in sorted(self.rows.values(), key=lambda r: r['address']):
+                w.writerow({c: r.get(c, '') for c in self.COLS})
+
+
 def norm_ke(s):
     """ケ/ヶ/が/ガ を正規化(市ケ谷=市ヶ谷)。aggregate_by_station と同じ規約。"""
     s = str(s or '')
@@ -94,7 +166,8 @@ class Geo:
     # 物件名から町名/駅名を拾うときに、区重心からこれ以上離れた候補は採らない
     WARD_GUARD_KM = 2.5
 
-    def __init__(self, choume_path=None, coords_path=None, extract_muni=None):
+    def __init__(self, choume_path=None, coords_path=None, extract_muni=None, geocoder=None):
+        self.geocoder = geocoder   # 番地まである住所の位置（無ければ従来どおり丁目重心から）
         cp = choume_path or _first(CHOUME_CANDIDATES, 'choume.json')
         sp = coords_path or _first(COORDS_CANDIDATES, 'station_coords.csv')
         # extract_muni は呼び出し側(aggregate_by_station)の実装を借りる。
@@ -162,6 +235,10 @@ class Geo:
 
     def locate(self, loc, prop_name):
         """(lat, lon, 精度) を返す。座標が付かないときは (None, None, 'なし')。"""
+        if self.geocoder and BANCHI.search(str(loc or '')):
+            p = self.geocoder.lookup(loc)
+            if p:
+                return p[0], p[1], '番地'
         for k in self._choume_keys(loc):
             if k in self.cho:
                 return self.cho[k][0], self.cho[k][1], '丁目'
