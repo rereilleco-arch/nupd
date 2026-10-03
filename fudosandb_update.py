@@ -158,6 +158,17 @@ def fetch_one(kind, code, out):
 
 code_name = {v:k for k,v in TOKYO.items()}
 
+def skey(s):
+    """駅名の照合キー。プラグインの eki_norm_station と同じ規約
+    （空白・末尾の「駅」・括弧の中を外し、ケ/ヶ/が/ガ をケにそろえる）"""
+    import unicodedata
+    s=unicodedata.normalize("NFKC",str(s or ""))
+    s=re.sub(r"\s+","",s)
+    s=re.sub(r"駅$","",s)
+    s=re.sub(r"[（(〈<＜][^）)〉>＞]*[）)〉>＞]","",s)
+    return re.sub(r"[ヶがガ]","ケ",s)
+
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--master",default="tokyost_1.csv")
@@ -174,7 +185,9 @@ def main():
     m=pd.read_csv(a.master,encoding="utf-8-sig",dtype=str)
     m["muni"]=m["address"].map(muni_from_address)
     prices=pd.read_csv(a.prices,dtype=str)
-    tsubo_map=dict(zip(prices["station"],prices.get("mansion_tsubo_trimmean",pd.Series(dtype=str))))
+    # 駅名の表記をそろえて引く。取引データは国交省の表記（祖師ケ谷大蔵・押上）、駅マスタはサイトの表記
+    # （祖師ヶ谷大蔵・押上（スカイツリー前））で、完全一致だと14駅の想定利回りが空になっていた（2026-10）
+    tsubo_map={skey(k):v for k,v in zip(prices["station"],prices.get("mansion_tsubo_trimmean",pd.Series(dtype=str)))}
 
     # --- キャッシュ読み込み(APIの1日上限に対応。前回取得分はそのまま使う) ---
     cache={}
@@ -239,7 +252,7 @@ def main():
         st=r["post_title"]; d={"station":st,"fudosan_muni":r["muni"]}
         d.update({k:val for k,val in v.items() if not k.startswith("_")})
         try:
-            tsubo=float(tsubo_map.get(st) or 0); base=float(v.get("_rent_base") or 0)
+            tsubo=float(tsubo_map.get(skey(st)) or 0); base=float(v.get("_rent_base") or 0)
             if tsubo>0 and base>0:
                 d["yield_est"]=round(base*12/(tsubo*TSUBO25)*100,2)
         except: pass
