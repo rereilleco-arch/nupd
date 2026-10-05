@@ -45,9 +45,17 @@ def kan2num(t):
         return (KAN.index(a) if a else 1) * 10 + (KAN.index(b) if b else 0)
     return KAN.index(t) if t in KAN else 0
 
+IVS = re.compile('[\U000E0100-\U000E01EF\uFE00-\uFE0F]')
+
 def norm(s):
-    """町丁名を『◯◯3丁目』形式に正規化して突合キーにする"""
-    s = unicodedata.normalize('NFKC', s or '').replace(' ', '').replace('　', '')
+    """町丁名を『◯◯3丁目』形式に正規化して突合キーにする
+    資料ごとの書き方の違いも消す（消さないと町丁ごと人口が落ちる）
+      ・異体字セレクタ：住基2026年版から「大塚󠄄」のように付く（見た目は同じ。NFKCでは消えないので先に外す）
+      ・ヶ／ケ：住基は「幡ヶ谷」、choume.json は「幡ケ谷」
+      ・「大字」：住基は「瑞穂町大字箱根ケ崎」"""
+    s = IVS.sub('', s or '')
+    s = unicodedata.normalize('NFKC', s).replace(' ', '').replace('　', '')
+    s = s.replace('ヶ', 'ケ').replace('ヵ', 'カ').replace('大字', '')
     s = re.sub(r'([0-9]+|[〇一二三四五六七八九十]+)丁目',
                lambda m: f'{kan2num(m.group(1))}丁目', s)
     return s

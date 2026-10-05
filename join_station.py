@@ -22,9 +22,15 @@ def kan2num(t):
         return (KAN.index(a) if a else 1)*10 + (KAN.index(b) if b else 0)
     return KAN.index(t) if t in KAN else 0
 
+IVS = re.compile('[\U000E0100-\U000E01EF\uFE00-\uFE0F]')
+
 def norm_town(s):
-    """町名を『◯◯3丁目』形式に正規化"""
-    s = unicodedata.normalize('NFKC', s or '').replace(' ', '').replace('　','')
+    """町名を『◯◯3丁目』形式に正規化
+    資料ごとの書き方の違いも消す（station_population.py の norm と同じ）
+      ・異体字セレクタ（NFKCでは消えないので先に外す）・ヶ／ケ（種データは「幡ヶ谷」、choume.json は「幡ケ谷」）・「大字」"""
+    s = IVS.sub('', s or '')
+    s = unicodedata.normalize('NFKC', s).replace(' ', '').replace('　','')
+    s = s.replace('ヶ', 'ケ').replace('ヵ', 'カ').replace('大字', '')
     s = re.sub(r'([0-9]+|[〇一二三四五六七八九十]+)丁目', lambda m: f'{kan2num(m.group(1))}丁目', s)
     return s
 
