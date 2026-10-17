@@ -5,14 +5,14 @@
   "land_yoy": 0.35,
   "flood_pct": 13.2,
   "landslide_pct": 17.2,
-  "rent_tsubo": 9649,
-  "rent_tsubo_low": 8202,
-  "rent_tsubo_high": 10131,
-  "_rent_base": 72970,
+  "rent_tsubo": 8301,
+  "rent_tsubo_low": 7056,
+  "rent_tsubo_high": 8716,
+  "_rent_base": 62778,
   "land_trend_json": "[{\"y\": 2012, \"v\": 99900}, {\"y\": 2013, \"v\": 98718}, {\"y\": 2014, \"v\": 99041}, {\"y\": 2015, \"v\": 99782}, {\"y\": 2016, \"v\": 97542}, {\"y\": 2017, \"v\": 97929}, {\"y\": 2018, \"v\": 97895}, {\"y\": 2019, \"v\": 98930}, {\"y\": 2020, \"v\": 98617}, {\"y\": 2021, \"v\": 95909}, {\"y\": 2022, \"v\": 95765}, {\"y\": 2023, \"v\": 96613}, {\"y\": 2024, \"v\": 97961}, {\"y\": 2025, \"v\": 100395}, {\"y\": 2026, \"v\": 99357}]",
   "_fetched": {
    "profile": "2026-07-18",
-   "rent": "2026-07-18",
+   "rent": "2026-10-17",
    "trends": "2026-07-18"
   }
  },
@@ -222,14 +222,14 @@
  },
  "多摩市": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-10-17",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 10927,
-  "rent_tsubo_low": 9288,
-  "rent_tsubo_high": 11473,
-  "_rent_base": 82632,
+  "rent_tsubo": 9415,
+  "rent_tsubo_low": 8003,
+  "rent_tsubo_high": 9886,
+  "_rent_base": 71202,
   "pop2050": 133806,
   "pop_change": -8.53,
   "land_yoy": 2.99,
@@ -239,14 +239,14 @@
  },
  "大田区": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-10-17",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 13476,
-  "rent_tsubo_low": 11455,
-  "rent_tsubo_high": 14150,
-  "_rent_base": 101912,
+  "rent_tsubo": 12533,
+  "rent_tsubo_low": 10653,
+  "rent_tsubo_high": 13160,
+  "_rent_base": 94782,
   "pop2050": 768130,
   "pop_change": 2.51,
   "land_yoy": 8.0,
@@ -256,14 +256,14 @@
  },
  "小平市": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-10-17",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 11026,
-  "rent_tsubo_low": 9372,
-  "rent_tsubo_high": 11577,
-  "_rent_base": 83383,
+  "rent_tsubo": 9873,
+  "rent_tsubo_low": 8392,
+  "rent_tsubo_high": 10367,
+  "_rent_base": 74668,
   "pop2050": 197822,
   "pop_change": -1.56,
   "land_yoy": 3.28,
@@ -273,14 +273,14 @@
  },
  "小金井市": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-10-17",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 11187,
-  "rent_tsubo_low": 9509,
-  "rent_tsubo_high": 11746,
-  "_rent_base": 84600,
+  "rent_tsubo": 11955,
+  "rent_tsubo_low": 10162,
+  "rent_tsubo_high": 12553,
+  "_rent_base": 90409,
   "pop2050": 128944,
   "pop_change": 0.44,
   "land_yoy": 4.82,
@@ -290,14 +290,14 @@
  },
  "府中市": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-10-17",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 11481,
-  "rent_tsubo_low": 9759,
-  "rent_tsubo_high": 12055,
-  "_rent_base": 86823,
+  "rent_tsubo": 11332,
+  "rent_tsubo_low": 9632,
+  "rent_tsubo_high": 11898,
+  "_rent_base": 85697,
   "pop2050": 260162,
   "pop_change": -2.05,
   "land_yoy": 4.33,
@@ -307,14 +307,14 @@
  },
  "文京区": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-10-17",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 16236,
-  "rent_tsubo_low": 13800,
-  "rent_tsubo_high": 17048,
-  "_rent_base": 122783,
+  "rent_tsubo": 15692,
+  "rent_tsubo_low": 13338,
+  "rent_tsubo_high": 16476,
+  "_rent_base": 118669,
   "pop2050": 271626,
   "pop_change": 8.32,
   "land_yoy": 14.32,
@@ -324,14 +324,14 @@
  },
  "新宿区": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-10-17",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 16891,
-  "rent_tsubo_low": 14358,
-  "rent_tsubo_high": 17736,
-  "_rent_base": 127740,
+  "rent_tsubo": 17210,
+  "rent_tsubo_low": 14629,
+  "rent_tsubo_high": 18071,
+  "_rent_base": 130154,
   "pop2050": 364110,
   "pop_change": 1.74,
   "land_yoy": 11.88,
@@ -341,14 +341,14 @@
  },
  "日野市": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-10-17",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 10787,
-  "rent_tsubo_low": 9169,
-  "rent_tsubo_high": 11326,
-  "_rent_base": 81574,
+  "rent_tsubo": 9116,
+  "rent_tsubo_low": 7749,
+  "rent_tsubo_high": 9572,
+  "_rent_base": 68941,
   "pop2050": 185978,
   "pop_change": -3.15,
   "land_yoy": 5.45,
