@@ -24,6 +24,7 @@
     https://www.toukei.metro.tokyo.lg.jp/juukiy/2026/jy26qv0500.csv
   station_coords.csv         … 駅座標
   _pipeline/choume.json      … 町丁目の代表点座標（Geolonia）
+  _pipeline/choume_supplement.json … choume.json に座標の無い町の点（国交省 位置参照情報）
 
 出力  station_population.csv
   station, pop_walk, hh_walk, town_n, pop_per_ride
@@ -46,16 +47,18 @@ def kan2num(t):
     return KAN.index(t) if t in KAN else 0
 
 IVS = re.compile('[\U000E0100-\U000E01EF\uFE00-\uFE0F]')
+VARIANT = str.maketrans({'麴': '麹', '簞': '箪', '鴬': '鶯'})   # 住基は麴町・簞笥町・鴬谷町、choume.json は麹町・箪笥町・鶯谷町
 
 def norm(s):
     """町丁名を『◯◯3丁目』形式に正規化して突合キーにする
     資料ごとの書き方の違いも消す（消さないと町丁ごと人口が落ちる）
       ・異体字セレクタ：住基2026年版から「大塚󠄄」のように付く（見た目は同じ。NFKCでは消えないので先に外す）
       ・ヶ／ケ：住基は「幡ヶ谷」、choume.json は「幡ケ谷」
-      ・「大字」：住基は「瑞穂町大字箱根ケ崎」"""
-    s = IVS.sub('', s or '')
+      ・「大字」：住基は「瑞穂町大字箱根ケ崎」
+      ・異体字：住基2026年版は「麴町」「簞笥町」、choume.json は「麹町」「箪笥町」（2026-10、麹町1〜6丁目が0人になっていた）"""
+    s = IVS.sub('', s or '').translate(VARIANT)
     s = unicodedata.normalize('NFKC', s).replace(' ', '').replace('　', '')
-    s = s.replace('ヶ', 'ケ').replace('ヵ', 'カ').replace('大字', '')
+    s = s.replace('ヶ', 'ケ').replace('ヵ', 'カ').replace('大字', '').replace('西多摩郡', '')   # choume.json は「西多摩郡瑞穂町」、住基は「瑞穂町」
     s = re.sub(r'([0-9]+|[〇一二三四五六七八九十]+)丁目',
                lambda m: f'{kan2num(m.group(1))}丁目', s)
     return s
@@ -99,16 +102,21 @@ def main():
             key = norm((r.get('地域') or '') + (r.get('町丁別地域') or ''))
             towns[key] = (num(r.get('人口／総数(人)')), num(r.get('世帯数(世帯)')))
 
-    # 町丁の代表点
+    # 町丁の代表点。choume.json に座標が無い町は、国交省 位置参照情報の点で補う（choume_supplement.json・choume_supplement.py）
     pts = []
-    with open(os.path.join(HERE, 'choume.json'), encoding='utf-8') as f:
-        for k, (lat, lng, city, town) in json.load(f).items():
-            if lat is None or lng is None:
-                continue
-            key = norm(city + town)
-            if key in towns:
-                p, h = towns[key]
-                pts.append((float(lat), float(lng), p, h))
+    src = list(json.load(open(os.path.join(HERE, 'choume.json'), encoding='utf-8')).values())
+    sup = os.path.join(HERE, 'choume_supplement.json')
+    if os.path.exists(sup):
+        src += [v[:4] for v in json.load(open(sup, encoding='utf-8')).values()]
+    pt = {}
+    for lat, lng, city, town in src:
+        if lat is not None and lng is not None:
+            pt.setdefault(norm(city + town), (float(lat), float(lng)))
+    for key, (p, h) in towns.items():
+        # 「小平市天神町2丁目(住居表示未実施地区)」のように住基だけが町を細かく分けている行は、元の町の点に置く
+        xy = pt.get(key) or pt.get(re.sub(r'[（(].*?[）)]$', '', key))
+        if xy:
+            pts.append((xy[0], xy[1], p, h))
 
     with open(a.coords, encoding='utf-8-sig') as f:
         st = [(r['station'], float(r['lat']), float(r['lon']))
