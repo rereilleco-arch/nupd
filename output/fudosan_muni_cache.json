@@ -69,14 +69,14 @@
  },
  "中野区": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-11-23",
    "profile": "2026-08-17",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 16307,
-  "rent_tsubo_low": 13861,
-  "rent_tsubo_high": 17122,
-  "_rent_base": 123320,
+  "rent_tsubo": 14875,
+  "rent_tsubo_low": 12644,
+  "rent_tsubo_high": 15619,
+  "_rent_base": 112495,
   "pop2050": 361659,
   "pop_change": 2.48,
   "land_yoy": 9.44,
@@ -86,14 +86,14 @@
  },
  "八王子市": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-11-23",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 10371,
-  "rent_tsubo_low": 8816,
-  "rent_tsubo_high": 10890,
-  "_rent_base": 78434,
+  "rent_tsubo": 9269,
+  "rent_tsubo_low": 7879,
+  "rent_tsubo_high": 9732,
+  "_rent_base": 70097,
   "pop2050": 532960,
   "pop_change": -7.7,
   "land_yoy": 3.98,
@@ -103,14 +103,14 @@
  },
  "北区": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-11-23",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 14331,
-  "rent_tsubo_low": 12182,
-  "rent_tsubo_high": 15048,
-  "_rent_base": 108381,
+  "rent_tsubo": 13680,
+  "rent_tsubo_low": 11628,
+  "rent_tsubo_high": 14364,
+  "_rent_base": 103454,
   "pop2050": 358782,
   "pop_change": 0.88,
   "land_yoy": 11.91,
@@ -120,14 +120,14 @@
  },
  "千代田区": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-11-23",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 16564,
-  "rent_tsubo_low": 14079,
-  "rent_tsubo_high": 17392,
-  "_rent_base": 125266,
+  "rent_tsubo": 19782,
+  "rent_tsubo_low": 16815,
+  "rent_tsubo_high": 20771,
+  "_rent_base": 149600,
   "pop2050": 79828,
   "pop_change": 14.4,
   "land_yoy": 10.65,
@@ -137,14 +137,14 @@
  },
  "台東区": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-11-23",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 16650,
-  "rent_tsubo_low": 14153,
-  "rent_tsubo_high": 17483,
-  "_rent_base": 125919,
+  "rent_tsubo": 15275,
+  "rent_tsubo_low": 12984,
+  "rent_tsubo_high": 16039,
+  "_rent_base": 115516,
   "pop2050": 244549,
   "pop_change": 10.64,
   "land_yoy": 14.14,
@@ -154,14 +154,14 @@
  },
  "品川区": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-11-23",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 16851,
-  "rent_tsubo_low": 14323,
-  "rent_tsubo_high": 17693,
-  "_rent_base": 127433,
+  "rent_tsubo": 15157,
+  "rent_tsubo_low": 12883,
+  "rent_tsubo_high": 15915,
+  "_rent_base": 114623,
   "pop2050": 465173,
   "pop_change": 8.81,
   "land_yoy": 14.23,
@@ -171,14 +171,14 @@
  },
  "国分寺市": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-11-23",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 11182,
-  "rent_tsubo_low": 9505,
-  "rent_tsubo_high": 11741,
-  "_rent_base": 84566,
+  "rent_tsubo": 10884,
+  "rent_tsubo_low": 9251,
+  "rent_tsubo_high": 11428,
+  "_rent_base": 82307,
   "pop2050": 130402,
   "pop_change": -1.39,
   "land_yoy": 7.15,
@@ -188,14 +188,14 @@
  },
  "国立市": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-11-23",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 11233,
-  "rent_tsubo_low": 9548,
-  "rent_tsubo_high": 11794,
-  "_rent_base": 84947,
+  "rent_tsubo": 10564,
+  "rent_tsubo_low": 8979,
+  "rent_tsubo_high": 11092,
+  "_rent_base": 79890,
   "pop2050": 74905,
   "pop_change": -3.47,
   "land_yoy": 7.08,
@@ -205,14 +205,14 @@
  },
  "墨田区": {
   "_fetched": {
-   "rent": "2026-07-20",
+   "rent": "2026-11-23",
    "profile": "2026-09-28",
    "trends": "2026-09-30"
   },
-  "rent_tsubo": 15048,
-  "rent_tsubo_low": 12791,
-  "rent_tsubo_high": 15800,
-  "_rent_base": 113799,
+  "rent_tsubo": 14422,
+  "rent_tsubo_low": 12259,
+  "rent_tsubo_high": 15143,
+  "_rent_base": 109067,
   "pop2050": 297077,
   "pop_change": 5.94,
   "land_yoy": 13.19,

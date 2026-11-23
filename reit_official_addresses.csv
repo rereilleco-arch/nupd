@@ -138,6 +138,7 @@ reit_name,property_name,address,lat,lon,source
 積水ハウス・リート投資法人,エスティメゾン川口,埼玉県川口市本町四丁目7番24,,,https://www.sekisuihouse-reit.co.jp/ja/portfolio/
 積水ハウス・リート投資法人,エスティメゾン川崎本町,神奈川県川崎市川崎区本町二丁目10番10,,,https://www.sekisuihouse-reit.co.jp/ja/portfolio/
 積水ハウス・リート投資法人,プライムメゾン錦糸町,東京都墨田区江東橋四丁目8番12,,,https://www.sekisuihouse-reit.co.jp/ja/portfolio/
+積水ハウス・リート投資法人,エスティメゾン八王子,東京都八王子市八日町1-17,,,https://www.sekisuihouse-reit.co.jp/ja/portfolio/
 ＫＤＸ不動産投資法人,KDX東茅場町三洋ビル,東京都中央区新川一丁目17番25号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,KDX八丁堀ビル,東京都中央区八丁堀四丁目5番8号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,KDX中野坂上ビル,東京都中野区本町三丁目30番4号,,,https://www.kdx-reit.com/ja/portfolio/
@@ -365,7 +366,6 @@ reit_name,property_name,address,lat,lon,source
 ＫＤＸ不動産投資法人,スーパービバホーム岩槻店（底地）,埼玉県さいたま市岩槻区府内三丁目445番1,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,ウニクス上里（底地）,埼玉県児玉郡上里町大字七本木字古新田西2272番1,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,ウニクス鴻巣（底地）,埼玉県鴻巣市北新宿字道下通225番1,,,https://www.kdx-reit.com/ja/portfolio/
-ＫＤＸ不動産投資法人,いなげや横浜南本宿店（底地）,神奈川県横浜市旭区南本宿町31番1,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,セントラルウェルネスクラブ長津田みなみ台,神奈川県横浜市緑区長津田みなみ台一丁目38番1,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,仲町台東急ストア,神奈川県横浜市都筑区仲町台一丁目4番7号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,ライフ亀戸店,東京都江東区亀戸九丁目24番17号,,,https://www.kdx-reit.com/ja/portfolio/
@@ -375,7 +375,6 @@ reit_name,property_name,address,lat,lon,source
 ＫＤＸ不動産投資法人,かわまち矢作モール,千葉県千葉市中央区矢作町57番1,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,オオゼキときわ台店,東京都板橋区常盤台二丁目8番5号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,もねの里モール,千葉県四街道市もねの里六丁目10番3他,,,https://www.kdx-reit.com/ja/portfolio/
-ＫＤＸ不動産投資法人,アクロスプラザ浦安東野（底地）,千葉県浦安市東野三丁目11番4,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,アピタテラス横浜綱島,神奈川県横浜市港北区綱島東四丁目3番17号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,カルサ平塚,神奈川県平塚市田村三丁目5番1号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,コンフォートマーケット西馬込店,東京都大田区西馬込二丁目21番3号,,,https://www.kdx-reit.com/ja/portfolio/
@@ -401,7 +400,6 @@ reit_name,property_name,address,lat,lon,source
 ＫＤＸ不動産投資法人,ホームセンターコーナン砂田橋店,愛知県名古屋市東区砂田橋四丁目1番60号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,ミリオンタウン塚口（底地）,兵庫県尼崎市上坂部一丁目36番4,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,ピーワンプラザ天王,静岡県浜松市中央区天王町字諏訪1982番1,,,https://www.kdx-reit.com/ja/portfolio/
-ＫＤＸ不動産投資法人,西友楽市守谷店（底地）,茨城県守谷市けやき台四丁目1番5,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,ラウンドワンスタジアム博多・半道橋店,福岡県福岡市博多区半道橋二丁目2番8号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,久留米西ショッピングセンター,福岡県久留米市梅満町字取替二490番地11,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,サンストリート浜北,静岡県浜松市浜名区平口5695番地,,,https://www.kdx-reit.com/ja/portfolio/
@@ -441,7 +439,6 @@ reit_name,property_name,address,lat,lon,source
 ＫＤＸ不動産投資法人,サニーライフ立川,東京都立川市上砂町五丁目79番23,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,リハビリホームボンセジュール南千束,東京都大田区南千束一丁目1番8号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,アクティバ琵琶,1滋賀県大津市雄琴六丁目16番16号2滋賀県大津市雄琴六丁目11番8号3滋賀県大津市雄琴六丁目17番17号,,,https://www.kdx-reit.com/ja/portfolio/
-ＫＤＸ不動産投資法人,天,北海道札幌市豊平区月寒中央通六丁目3番1号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,SOMPOケア ラヴィーレ神戸垂水,兵庫県神戸市垂水区名谷町猿倉285番地,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,いざりえ恵庭ビル,北海道恵庭市相生町1丁目8番1号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,グランヒルズおがわらこ,青森県上北郡東北町大字大浦字立野57番地2,,,https://www.kdx-reit.com/ja/portfolio/
@@ -487,6 +484,10 @@ reit_name,property_name,address,lat,lon,source
 ＫＤＸ不動産投資法人,TCS-HD横浜ビル,神奈川県横浜市神奈川区鶴屋町一丁目2番地7,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,イビススタイルズ東京ベイ,千葉県浦安市日の出二丁目1番1号,,,https://www.kdx-reit.com/ja/portfolio/
 ＫＤＸ不動産投資法人,BEB5沖縄瀬良垣,沖縄県国頭郡恩納村字瀬良垣1860番地4,,,https://www.kdx-reit.com/ja/portfolio/
+ＫＤＸ不動産投資法人,プレジオさくら夙川,兵庫県西宮市常磐町1番5,,,https://www.kdx-reit.com/ja/portfolio/
+ＫＤＸ不動産投資法人,プレジオ梅田,大阪府大阪市北区中崎西四丁目3番28号,,,https://www.kdx-reit.com/ja/portfolio/
+ＫＤＸ不動産投資法人,プレジオ帝塚山,大阪府大阪市住吉区万代東三丁目2番23号,,,https://www.kdx-reit.com/ja/portfolio/
+ＫＤＸ不動産投資法人,プレジオ長田,大阪府東大阪市長田中一丁目1番28号,,,https://www.kdx-reit.com/ja/portfolio/
 野村不動産マスターファンド投資法人,新宿野村ビル,東京都新宿区西新宿一丁目26番2号,35.6932298956156,139.695346355438,https://www.nre-mf.co.jp/ja/portfolio/
 野村不動産マスターファンド投資法人,野村不動産天王洲ビル,東京都品川区東品川二丁目4番11号,35.6200033338159,139.7512114048,https://www.nre-mf.co.jp/ja/portfolio/
 野村不動産マスターファンド投資法人,麹町ミレニアムガーデン,東京都千代田区麹町四丁目4番地30,35.6845333977174,139.734849929809,https://www.nre-mf.co.jp/ja/portfolio/
@@ -753,7 +754,7 @@ reit_name,property_name,address,lat,lon,source
 野村不動産マスターファンド投資法人,SOMPO ケア ラヴィーレレジデンス用賀,東京都世田谷区用賀三丁目6番3号,35.6300495,139.6372373,https://www.nre-mf.co.jp/ja/portfolio/
 野村不動産マスターファンド投資法人,SOMPO ケア ラヴィーレレジデンス辻堂西海岸,神奈川県藤沢市辻堂西海岸二丁目12番2号,35.3240789,139.4422058,https://www.nre-mf.co.jp/ja/portfolio/
 野村不動産マスターファンド投資法人,SOMPO ケア そんぽの家 大森西,東京都大田区大森西七丁目6番30号,35.569344,139.721736,https://www.nre-mf.co.jp/ja/portfolio/
-野村不動産マスターファンド投資法人,SOMPO ケア ラヴィーレレジデンス湘南辻堂,神奈川県茅ケ崎市赤松町13番16号,35.3380285,139.4422152,https://www.nre-mf.co.jp/ja/portfolio/
+野村不動産マスターファンド投資法人,SOMPO ケア ラヴィーレレジデンス湘南辻堂,神奈川県茅ヶ崎市赤松町13番16号,35.3380285,139.4422152,https://www.nre-mf.co.jp/ja/portfolio/
 野村不動産マスターファンド投資法人,KOKO HOTEL 京都三条,京都府京都市左京区新堺町通仁王門下る和国町407番地6,35.01001600000001,135.7759313,https://www.nre-mf.co.jp/ja/portfolio/
 野村不動産マスターファンド投資法人,プラウドフラット渋谷笹塚,東京都渋谷区幡ケ谷三丁目80番12号,35.6804536,139.669943,https://www.nre-mf.co.jp/ja/portfolio/
 野村不動産マスターファンド投資法人,プラウドフラット浅草ディアージュ,東京都台東区浅草六丁目24番4号,35.7176696,139.8011528,https://www.nre-mf.co.jp/ja/portfolio/
